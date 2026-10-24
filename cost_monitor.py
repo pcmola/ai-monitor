@@ -185,17 +185,23 @@ def local_query(range_key: str, group: str, from_value: str | None, to_value: st
         for run_start, run_end in runs:
             covered_start, covered_end = date.fromisoformat(run_start), date.fromisoformat(run_end)
             if covered_start <= cursor <= covered_end:
-                cursor = covered_end + timedelta(days=1)
+                cursor = max(cursor, covered_end + timedelta(days=1))
                 if cursor > end:
                     break
-        if cursor <= end:
+
+        # The selected range may extend beyond the latest completed batch.
+        # Show the contiguous portion that is available instead of rejecting
+        # the entire query because the final day has not been collected yet.
+        available_end = min(end, cursor - timedelta(days=1))
+        if available_end < start:
             return None
         rows = conn.execute(
             """SELECT usage_date, group_name, currency, cost
                FROM daily_cost
-               WHERE group_type = ? AND usage_date BETWEEN ? AND ?
+               WHERE group_type = ? AND subscription_id = ?
+                 AND usage_date BETWEEN ? AND ?
                ORDER BY usage_date, group_name""",
-            (group, str(start), str(end)),
+            (group, subscription_id or "", str(start), str(available_end)),
         ).fetchall()
         if not rows:
             return None
@@ -204,7 +210,7 @@ def local_query(range_key: str, group: str, from_value: str | None, to_value: st
     return {
         "rows": [{"date": r[0], "group": r[1], "cost": float(r[3])} for r in rows],
         "currency": currency,
-        "from": str(start), "to": str(end), "range": range_key,
+        "from": str(start), "to": str(available_end), "range": range_key,
         "today": str(date.today()),
         "days_in_month": calendar.monthrange(start.year, start.month)[1],
         "fetched": fetched or "local DB",

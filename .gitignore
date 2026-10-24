@@ -1,15 +1,19 @@
-# 인증정보·로컬 데이터 (커밋 금지)
+# Secrets and local configuration
 .env
+.env.*
+!.env.example
+*.pem
+*.key
 .azure/
 .azure-cli/
 *.db
 
-# 실행 로그·캐시
+# Runtime logs and caches
 logs/
 *.log
 __pycache__/
 *.pyc
 
-# 로컬 VS Code 데이터
+# Local VS Code data
 .vscode-data/
 .vscode-extensions/
