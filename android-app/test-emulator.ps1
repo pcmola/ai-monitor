@@ -7,6 +7,10 @@ New-Item -ItemType Directory -Force -Path $evidence | Out-Null
 
 function Invoke-Device {
     param([string[]]$Arguments)
+    $available = (& $adb devices) -join " "
+    if ($available -notmatch ([regex]::Escape($Device) + '\s+device\b')) {
+        throw "The test emulator disconnected. Run run-emulator.ps1 again; no account data was reset."
+    }
     $result = & $adb -s $Device @Arguments
     if ($LASTEXITCODE -ne 0) { throw "ADB failed: $($Arguments -join ' ')" }
     return $result
@@ -55,51 +59,57 @@ if ($name -notlike "*CodeSpend_API35*") {
 Invoke-Device @("shell", "am", "force-stop", "local.aimonitor") | Out-Null
 Invoke-Device @("shell", "am", "start", "-W", "-n", "local.aimonitor/.MainActivity") | Out-Null
 $homeScreen = Get-Hierarchy "01-launched"
-Assert-Text $homeScreen "코딩 비용"
-Assert-Text $homeScreen "구독 계정"
-Assert-Text $homeScreen "API 비용"
-
-Tap-Text "API 비용"
-$api = Get-Hierarchy "02-api"
-Assert-Text $api "전용 공간의 API 비용"
-Assert-Text $api "아직 연결하지 않았습니다"
-if (($api.SelectNodes("//node[@text]") | Where-Object { $_.text -match '\$0\.00' }).Count -gt 0) {
-    throw "Unconnected accounts must not display a fake zero cost."
+Assert-Text $homeScreen "구독 사용량"
+Assert-Text $homeScreen "Claude Code"
+foreach ($removedText in @("API 비용", "관리자 API 키", "전용 공간의 API 비용")) {
+    if (Find-Text $homeScreen $removedText) { throw "Obsolete billing UI remains: $removedText" }
 }
-Write-Host "PASS: disconnected account does not display a zero balance"
+Write-Host "PASS: obsolete API billing tab and admin key fields removed"
 
-Tap-Text "최근 30일"
-[xml]$preferences = (Invoke-Device @("shell", "run-as", "local.aimonitor", "cat",
-    "shared_prefs/code-spend-ui.xml")) -join [Environment]::NewLine
-if ($preferences.SelectSingleNode("//int[@name='days']").value -ne "30") {
-    throw "The 30-day selection was not saved."
-}
-Write-Host "PASS: 30-day period is persisted"
-
-Tap-Text "API 연결"
+Tap-Text "Claude 인증 가져오기"
 $settings = Get-Hierarchy "03-connection-dialog"
-Assert-Text $settings "Claude Code API 연결"
-Assert-Text $settings "관리자 API 키"
+Assert-Text $settings "Claude 구독 사용량 연결"
+$inputs = @($settings.SelectNodes("//node[@class='android.widget.EditText']"))
+if ($inputs.Count -ne 1) { throw "Expected one token input and no workspace ID input." }
+if ($inputs[0].password -ne "true") { throw "Token input is not masked." }
+Write-Host "PASS: one masked login token field; no workspace field"
 Tap-Text "저장 후 조회"
 $validation = Get-Hierarchy "04-empty-key-validation"
-Assert-Text $validation "관리자 키, 전용 공간 ID와 확인 체크가 필요합니다."
-Tap-Text "취소"
+Assert-Text $validation "유효한 accessToken이 필요합니다. 관리자 API 키는 사용하지 않습니다."
+Tap-Text ".credentials.json 파일 선택"
+$picker = (Invoke-Device @("shell", "dumpsys", "activity", "activities")) -join " "
+if ($picker -notmatch "documentsui") { throw "Android document picker was not opened." }
+Invoke-Device @("shell", "input", "keyevent", "4") | Out-Null
+Write-Host "PASS: native credential file picker opens and can be cancelled"
 
 Invoke-Device @("shell", "am", "force-stop", "local.aimonitor") | Out-Null
 Invoke-Device @("shell", "am", "start", "-W", "-n", "local.aimonitor/.MainActivity") | Out-Null
 $reopened = Get-Hierarchy "05-reopened"
-Assert-Text $reopened "전용 공간의 API 비용"
-Write-Host "PASS: API tab survives app restart"
-
-Tap-Text "구독 계정"
-$accounts = Get-Hierarchy "06-accounts"
-Assert-Text $accounts "Claude Code"
-Tap-Text "사용량·크레딧 보기" -Prefix
-$activities = (Invoke-Device @("shell", "dumpsys", "activity", "activities")) -join [Environment]::NewLine
-if ($activities -notmatch "claude\.ai") {
-    throw "The official Claude account page was not opened in a browser."
+Assert-Text $reopened "구독 사용량"
+for ($scrollStep=0; $scrollStep -lt 4; $scrollStep++) {
+    $current = Get-Hierarchy
+    if (Find-Text $current "Codex 인증 가져오기") { break }
+    Invoke-Device @("shell", "input", "swipe", "540", "1900", "540", "700", "350") | Out-Null
 }
-Write-Host "PASS: official Claude account browser navigation"
+$codex = Get-Hierarchy "06-codex"
+Assert-Text $codex "Codex 인증 가져오기"
+if (-not (Find-Text $codex "현재 한도 직접 조회 · 화면이 열려 있는 동안 1분마다 갱신") -and
+    -not (Find-Text $codex "Codex 인증을 한 번 가져오면 현재 한도를 직접 조회합니다")) {
+    throw "Codex live connection guidance is missing."
+}
+Tap-Text "Codex 인증 가져오기"
+$connection = Get-Hierarchy "06-codex-auth"
+Assert-Text $connection "Codex 실시간 사용량 연결"
+$inputs=@($connection.SelectNodes("//node[@class='android.widget.EditText']"))
+if($inputs.Count -ne 1 -or $inputs[0].password -ne "true") { throw "Codex token input must be one masked field." }
+Tap-Text "저장 후 조회"
+$validation = Get-Hierarchy "06-codex-validation"
+Assert-Text $validation "유효한 Codex 로그인 인증이 필요합니다. API 키·세션 기록은 여기에 넣지 마세요."
+Tap-Text "auth.json 파일 선택"
+$picker = (Invoke-Device @("shell", "dumpsys", "activity", "activities")) -join " "
+if ($picker -notmatch "documentsui") { throw "Codex file picker did not open." }
+Invoke-Device @("shell", "input", "keyevent", "4") | Out-Null
+Write-Host "PASS: Codex live auth validation and native auth file picker"
 
 $crash = (Invoke-Device @("logcat", "-d", "-b", "crash")) -join [Environment]::NewLine
 if ($crash -match "Process:\s*local\.aimonitor") { throw "Code Spend crash found in logcat." }
