@@ -8,6 +8,7 @@
 .azure-cli/
 *.db
 data/
+android-app/
 
 # Runtime logs and caches
 logs/

@@ -1,9 +1,8 @@
 # AI Monitor
 
-Claude·Codex 구독 한도, Tavily·ElevenLabs 크레딧과 Azure 비용을 확인하는 로컬 모니터입니다. PC 대시보드와 별도 Android 앱(Code Spend)을 함께 관리합니다.
+Claude·Codex 구독 한도, Tavily·ElevenLabs 크레딧과 Azure 비용을 확인하는 로컬 모니터입니다. PC 대시보드와 비용 수집 배치를 관리합니다.
 
 - **PC**: 허브에서 사용량·비용 모니터를 실행하고 관리합니다.
-- **Android**: PC 서버 없이 동작합니다. 현재 Claude는 공식 웹에서 사용량을 확인하고, Codex는 인증 파일을 가져와 앱 카드에서 조회합니다. 모바일 자체 로그인·토큰 자동 갱신은 구현되어 있지 않습니다.
 
 ## 목차
 
@@ -22,9 +21,8 @@ Claude·Codex 구독 한도, Tavily·ElevenLabs 크레딧과 Azure 비용을 확
   - [4.4 예약 배치 수집](#44-예약-배치-수집)
   - [4.5 폴더 구조](#45-폴더-구조)
 - [5. 비용 배치 — 매일 09:05](#5-비용-배치--매일-0905)
-- [6. Android — Code Spend](#6-android--code-spend)
-- [7. 검증과 화면 캡처](#7-검증과-화면-캡처)
-- [8. 보안과 Git 업로드](#8-보안과-git-업로드)
+- [6. 검증과 화면 캡처](#6-검증과-화면-캡처)
+- [7. 보안과 Git 업로드](#7-보안과-git-업로드)
 
 ## 1. 사전 조건 — PC
 
@@ -242,7 +240,6 @@ ai-monitor/
 ├── scripts/                  # 배치 실행·Git 업로드·화면 캡처
 ├── tests/                    # 단위 테스트·브라우저 검증
 ├── docs/images/              # README용 실제 화면 캡처
-├── android-app/              # Code Spend Android 소스·빌드·에뮬레이터 도구
 ├── data/                     # 로컬 비용 DB (Git 제외)
 ├── logs/                     # 실행 로그 (Git 제외)
 ├── .env                      # 실제 설정·키 (Git 제외)
@@ -289,31 +286,7 @@ Start-ScheduledTask -TaskName AI-Monitor-CostBatch
 
 `LastTaskResult`가 `0`이면 정상 종료입니다. 인증 오류 등 세부 원인은 해당 날짜 로그에서 확인합니다.
 
-## 6. Android — Code Spend
-
-현재 소스는 **4.5**입니다. Android 8.0 이상에서 동작하며 PC 서버나 LAN 공개는 필요하지 않습니다. Azure/API 청구 비용을 조회하지 않으며, 구독 한도를 금액으로 환산하지 않습니다.
-
-| 서비스 | 현재 앱의 방식 |
-|---|---|
-| Claude Code | 휴대폰 브라우저에서 공식 사용량 페이지 로그인. 브라우저가 세션을 유지하며 앱 카드 수치와 자동 연동되지는 않음 |
-| Codex | `.codex/auth.json`을 한 번 가져온 뒤 앱 화면이 열린 동안 1분마다 한도 조회. 인증 만료 시 다시 가져오기 필요 |
-
-로그인 토큰 자동 갱신이나 모바일 자체 로그인은 아직 구현되지 않았습니다. 공식 페이지 로그인도 만료·로그아웃·브라우저 데이터 삭제 시 다시 해야 합니다.
-
-```powershell
-# APK 빌드 (JDK 17·Android SDK 35 필요)
-.\android-app\build-apk.ps1
-# 에뮬레이터 실행 및 앱 설치
-.\android-app\run-emulator.ps1
-# 수정 후 다시 빌드·설치
-.\android-app\run-emulator.ps1 -Rebuild
-# 에뮬레이터 UI 검증
-.\android-app\test-emulator.ps1
-```
-
-빌드된 `android-app/CodeSpend.apk`를 휴대폰 Download 폴더로 복사해 파일 관리자로 설치합니다. APK는 Git에 포함되지 않습니다. 빌드 도구 설치, 인증 가져오기와 문제 해결은 [Android README](android-app/README.md)를 참고하세요.
-
-## 7. 검증과 화면 캡처
+## 6. 검증과 화면 캡처
 
 브라우저 검증·캡처에는 Playwright와 설치된 Google Chrome이 필요합니다. 먼저 PC 서버를 실행합니다.
 
@@ -330,9 +303,9 @@ npx --yes pyright monitors providers common hub.py
 
 캡처 스크립트는 화면의 로딩 완료를 기다린 뒤 `docs/images/`의 PNG 세 장을 갱신합니다. Git에 올리기 전 계정·리소스 이름 등 공개 범위도 확인하세요. 브라우저 테스트의 가짜 응답 기반 검증 화면과 README의 실제 캡처는 별개입니다.
 
-## 8. 보안과 Git 업로드
+## 7. 보안과 Git 업로드
 
-`.env`, 인증 파일, Azure 로그인 캐시, 비용 DB, 로그, APK·서명 키·Android SDK·에뮬레이터 자료는 Git에서 제외합니다. `.env.example`에는 실제 키·내부 엔드포인트가 아닌 자리표시자만 둡니다. 인증 파일과 API 키를 문서나 화면 캡처에 넣지 마세요.
+`.env`, 인증 파일, Azure 로그인 캐시, 비용 DB, 로그는 Git에서 제외합니다. `.env.example`에는 실제 키·내부 엔드포인트가 아닌 자리표시자만 둡니다. 인증 파일과 API 키를 문서나 화면 캡처에 넣지 마세요.
 
 변경 내용을 확인한 뒤 다음 명령으로 업로드할 수 있습니다. 민감정보를 과거 커밋에 올렸다면 파일 삭제만으로 해결되지 않으며, 키 폐기·재발급과 별도 이력 정리가 필요합니다.
 
