@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 import threading
@@ -24,6 +25,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+from urllib.request import ProxyHandler, build_opener
 
 from common.server import favicon, local_server, open_chrome, site_url
 
@@ -142,6 +144,55 @@ def server_status(force: bool = False) -> list[dict]:
 
 
 # ---------------------------------------------------------------- actions
+
+def owns_hub_process(process: dict, url: str) -> bool:
+    """동일 프로젝트 허브인지 확인하며 다른 프로그램은 종료하지 않는다."""
+    if not process["name"].lower().startswith(("python", "py.exe")):
+        return False
+    args = [arg.strip('"') for arg in shlex.split(process["cmd"], posix=False)]
+    if any(arg in ("-c", "-m") for arg in args[1:]):
+        return False
+    script = next((arg for arg in args[1:] if not arg.startswith("-")), "")
+    path = Path(script)
+    if path.is_absolute():
+        return path.resolve() == Path(__file__).resolve()
+    if script not in ("hub.py", "./hub.py", ".\\hub.py"):
+        return False
+    # CIM에는 작업 폴더가 없으므로 상대 경로 실행은 서버 응답도 확인한다.
+    try:
+        with build_opener(ProxyHandler({})).open(url + "/api/status", timeout=3) as response:
+            data = json.loads(response.read(1024 * 1024))
+        expected = {s["key"]: s["script"] for s in SERVERS}
+        return bool(expected) and {s["key"]: s["script"] for s in data["servers"]} == expected
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def create_hub_server():
+    """기존 허브만 교체하고 하위 모니터는 유지한다."""
+    ip, port, url = site_url(HUB_SITE, HUB_PORT)
+    try:
+        return local_server(HUB_PORT, Handler, HUB_SITE)
+    except SystemExit as error:
+        owner = next((pid for pid, addrs in listeners().items() if f"{ip}:{port}" in addrs), None)
+        process = next((p for p in processes() if p["pid"] == owner), None) if owner else None
+        if process is None or not owns_hub_process(process, url):
+            log(f"{ip}:{port} 사용 중 (PID {owner}): 이 프로젝트의 허브인지 확인할 수 없어 종료하지 않습니다.")
+            raise SystemExit(1) from error
+    log(f"기존 허브 PID {owner}를 종료하고 다시 시작합니다 (모니터는 유지).")
+    result = subprocess.run(["taskkill", "/PID", str(owner), "/F"], capture_output=True,
+                            timeout=10, creationflags=NO_WINDOW)
+    if result.returncode:
+        raise SystemExit(f"기존 허브 PID {owner} 종료 실패 (종료 코드 {result.returncode}).")
+    deadline = time.monotonic() + 10
+    while True:
+        try:
+            return local_server(HUB_PORT, Handler, HUB_SITE)
+        except SystemExit as error:
+            if time.monotonic() >= deadline:
+                raise SystemExit("기존 허브 종료 후에도 포트를 열지 못했습니다. 다시 실행하세요.") from error
+            time.sleep(0.2)
+
 
 def start(s: dict):
     LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -413,14 +464,7 @@ refresh();setInterval(refresh,3000);
 def main():
     flags = set(sys.argv[1:])
     ip, port, _ = site_url(HUB_SITE, HUB_PORT)
-    try:
-        server = local_server(HUB_PORT, Handler, HUB_SITE)
-    except SystemExit:
-        owner = next((pid for pid, addrs in listeners().items() if f"{ip}:{port}" in addrs), None)
-        log(f"{HUB_TITLE} 를 띄우지 못했습니다: {ip}:{port} 를 이미 사용 중입니다"
-            + (f" (PID {owner}). 이미 떠 있는 허브라면 브라우저로 http://{HUB_SITE} 를 열거나, "
-               f"끄고 다시 실행하세요: taskkill /PID {owner} /T /F" if owner else "."))
-        raise SystemExit(1)
+    server = create_hub_server()
     log(f"{HUB_TITLE} 시작: {server.url} (수신 {ip}:{port}, PID {os.getpid()})")
     log(f"  파이썬 {sys.executable}")
     log(f"  서버 출력 로그 폴더 {LOG_DIR}")

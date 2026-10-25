@@ -5,6 +5,25 @@ Claude·Codex 구독 한도, Tavily·ElevenLabs 크레딧과 Azure 비용을 확
 - **PC**: 허브에서 사용량·비용 모니터를 실행하고 관리합니다.
 - **Android**: PC 서버 없이 동작합니다. 현재 Claude는 공식 웹에서 사용량을 확인하고, Codex는 인증 파일을 가져와 앱 카드에서 조회합니다. 모바일 자체 로그인·토큰 자동 갱신은 구현되어 있지 않습니다.
 
+## 사전 조건 — PC
+
+필요한 기능만 준비하면 됩니다. 허브·사용량 화면 자체는 비용 DB 없이 실행할 수 있지만, Azure 비용 서버와 로컬 비용 조회에는 아래 조건이 추가로 필요합니다.
+
+| 대상 | 사전 조건 | 준비되지 않은 경우 |
+|---|---|---|
+| 공통 실행 | Windows PowerShell, Python 3.10 이상, 저장소·`logs/` 쓰기 권한 | 서버 실행 또는 로그 저장 실패 |
+| Claude 사용량 | 이 PC에서 Claude Code 로그인, 유효한 `~/.claude/.credentials.json`, API 인터넷 연결 | Claude 카드에 인증·연결 오류 표시 |
+| Codex 한도 | 이 PC에서 Codex 사용 후 `~/.codex/sessions`에 한도 기록 생성 | 표시할 한도 정보가 없거나 이전 기록 표시 |
+| Tavily·ElevenLabs | 루트 `.env`의 해당 API 키, API 인터넷 연결. ElevenLabs는 `user_read` 권한 | 해당 카드에 설정·권한 오류 표시 |
+| Azure 비용 서버 | Azure CLI 설치·로그인, 조회할 구독 선택 | **로컬 DB 조회를 선택해도**, 서버 시작 시 `az account show`에 실패하면 비용 서버 실행 불가 |
+| Azure API 조회·배치 수집 | 대상 구독 비용 조회 권한(Cost Management Reader 등), Azure API 연결 | 직접 조회·DB 수집 실패 |
+| 로컬 DB 조회 | `data/cost_monitor.db`에 선택한 구독·분류·기간의 수집 데이터 | 파일이 없거나 수집 범위가 부족하면 조회할 비용 없음 |
+| 예약 배치 | 이 PC의 작업 스케줄러에 별도 등록, 실행 사용자 Azure 로그인 유지, 실행 시 PC 켜짐 | 정해진 시각에 수집되지 않음 |
+
+**DB 서버 설치는 필요 없습니다.** Python에 포함된 SQLite를 사용합니다. DB 파일·테이블은 최초 배치 실행 시 자동 생성되지만, 비용 데이터는 Azure 조회에 성공해야 채워집니다. Git에는 DB와 실제 인증 정보가 포함되지 않습니다.
+
+`~`는 서버를 실행하는 Windows 사용자의 홈 폴더입니다. 다른 사용자로 실행하면 Claude·Codex 기록과 Azure CLI 로그인 정보가 달라질 수 있습니다. 포트 없는 `.local` 주소를 사용하려면 아래 hosts 설정도 필요합니다.
+
 ## 빠른 시작 — PC
 
 Windows PowerShell에서 저장소 루트로 이동합니다. Python 3.10 이상이 필요하며, PC 서버 자체는 Python 표준 라이브러리만 사용합니다.
@@ -27,12 +46,27 @@ python hub.py --start-all
 | ElevenLabs 크레딧 | 루트 `.env`의 `ELEVENLABS_API_KEY`, 구독 조회에 필요한 `user_read` 권한 |
 | Azure 비용 | Azure CLI 설치·`az login`, 대상 구독의 Cost Management Reader 이상 권한 |
 
-비용 DB를 처음 채우려면 다음 명령을 실행합니다. Azure 조회 결과는 `data/cost_monitor.db`에 저장됩니다.
+### 비용 DB 최초 생성·수집
+
+아래 명령은 DB가 없으면 생성하고 Azure 조회 결과를 `data/cost_monitor.db`에 저장합니다. 기본 화면은 어제까지의 최근 7일을 표시하므로, 최초에는 오늘을 포함한 **8일**을 수집해 그 범위를 채웁니다.
 
 ```powershell
 az login
-python -m monitors.cost_batch
+# 구독이 여러 개라면 대상 구독으로 변경합니다.
+az account set --subscription "구독 이름 또는 ID"
+python -m monitors.cost_batch --days 8
+# 수집 성공 후 비용 화면을 새로고침합니다.
 ```
+
+이미 DB가 있으면 다시 만들 필요는 없습니다. 배치를 재실행하면 해당 구독·날짜·항목의 비용을 갱신합니다. 수집과 화면 조회는 같은 구독을 사용해야 합니다. 더 오래된 기간이 필요하면 다음과 같이 수집 시작일을 지정합니다.
+
+```powershell
+python -m monitors.cost_batch --from-date 2026-10-01
+# 파일 존재 여부만 확인 (수집 성공 여부는 배치 출력·화면도 확인)
+Test-Path .\data\cost_monitor.db
+```
+
+기존 DB를 옮길 때는 관련 서버·배치를 중지하고 `data/cost_monitor.db` 위치에 복사합니다. 이 프로젝트가 생성한 테이블 구조의 DB를 사용해야 하며, 공유·백업 시 비용·구독 정보의 공개 범위에 주의하세요.
 
 ### 화면 주소
 
@@ -90,22 +124,91 @@ Claude, ChatGPT/Codex, Tavily, ElevenLabs 네 카드를 한 화면에 표시합�
 
 허브는 두 서버의 프로세스를 관리합니다. 사용량·비용 데이터는 각 모니터가 직접 조회합니다.
 
+### 1. 허브와 모니터
+
+허브가 사용량·비용 서버를 각각 실행·중지·재시작합니다.
+
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontSize": "20px"}, "flowchart": {"nodeSpacing": 30, "rankSpacing": 40}}}%%
 flowchart TD
-    Browser["PC 브라우저"] --> Hub["hub.py · 프로세스 관리"]
-    Hub -->|실행·중지·재시작| Usage["monitors.usage_monitor"]
-    Hub -->|실행·중지·재시작| Cost["monitors.cost_monitor"]
-    Usage --> Claude["Claude 로그인 정보 · 사용량 API"]
-    Usage --> Codex["Codex 로컬 세션 기록"]
-    Usage --> Providers["providers · Tavily / ElevenLabs API"]
-    Env["루트 .env · Git 제외"] -.-> Providers
-    Cost -->|로컬 DB 조회| DB[("data/cost_monitor.db")]
-    Cost -->|최대 31일 직접 조회| Azure["Azure Cost Management"]
-    Scheduler["Windows 작업 스케줄러 · 매일 09:05"] --> Runner["scripts/run_cost_batch.ps1"]
-    Runner --> Batch["monitors.cost_batch · 최근 7일 재수집"]
-    Batch --> Azure
-    Batch -->|저장| DB
+    Browser["PC 브라우저"] --> Hub["모니터 허브"]
+    Hub -->|프로세스 관리| Usage["사용량 모니터"]
+    Hub -->|프로세스 관리| Cost["비용 모니터"]
+
+    classDef entry fill:#dbeafe,stroke:#2563eb,color:#172554,stroke-width:2px
+    classDef monitor fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:2px
+    class Browser,Hub entry
+    class Usage,Cost monitor
 ```
+
+진입점: `hub.py` → `monitors.usage_monitor` / `monitors.cost_monitor`.
+
+### 2. 사용량 조회
+
+사용량 모니터가 각 서비스의 한도·크레딧을 모아 표시합니다.
+
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontSize": "20px"}, "flowchart": {"nodeSpacing": 24, "rankSpacing": 40}}}%%
+flowchart TD
+    Usage["사용량 모니터"] --> Claude["Claude<br/>사용량 API"]
+    Usage --> Codex["Codex<br/>로컬 세션 기록"]
+    Usage --> Providers["Tavily · ElevenLabs<br/>크레딧 API"]
+    Env["로컬 .env"] -.->|API 키| Providers
+
+    classDef monitor fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:2px
+    classDef source fill:#ede9fe,stroke:#7c3aed,color:#3b0764,stroke-width:2px
+    classDef config fill:#f1f5f9,stroke:#64748b,color:#0f172a,stroke-dasharray:5 5
+    class Usage monitor
+    class Claude,Codex,Providers source
+    class Env config
+```
+
+Claude는 PC 로그인 정보를 사용하고, Codex는 로컬 세션에 기록된 한도를 읽습니다. Tavily·ElevenLabs 조회 코드는 `providers/`에 있으며 키는 Git에서 제외된 루트 `.env`에서 읽습니다.
+
+### 3. 비용 화면 조회
+
+로컬 DB와 Azure API 중 선택한 경로로 비용을 조회합니다.
+
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontSize": "20px"}, "flowchart": {"nodeSpacing": 35, "rankSpacing": 45}}}%%
+flowchart TD
+    Cost["비용 모니터"] -->|기간 제한 없음| DB[("로컬 비용 DB")]
+    Cost -->|최대 31일 조회| Azure["Azure 비용 API"]
+
+    classDef monitor fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:2px
+    classDef storage fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:2px
+    classDef source fill:#ede9fe,stroke:#7c3aed,color:#3b0764,stroke-width:2px
+    class Cost monitor
+    class DB storage
+    class Azure source
+```
+
+비용 화면: `monitors.cost_monitor`. 로컬 DB: `data/cost_monitor.db`.
+
+### 4. 예약 배치 수집
+
+매일 09:05에 최근 7일을 재수집해 로컬 DB를 갱신합니다.
+
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontSize": "20px"}, "flowchart": {"rankSpacing": 35}}}%%
+flowchart TD
+    Scheduler["작업 스케줄러<br/>매일 09:05"] --> Runner["PowerShell 배치 실행"]
+    Runner --> Batch["비용 수집 배치"]
+    Batch -->|최근 7일 요청| Azure["Azure 비용 API"]
+    Azure -->|조회 결과| Batch
+    Batch -->|저장·갱신| DB[("로컬 비용 DB")]
+
+    classDef batch fill:#ffedd5,stroke:#ea580c,color:#7c2d12,stroke-width:2px
+    classDef source fill:#ede9fe,stroke:#7c3aed,color:#3b0764,stroke-width:2px
+    classDef storage fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:2px
+    class Scheduler,Runner,Batch batch
+    class Azure source
+    class DB storage
+```
+
+실행 스크립트: `scripts/run_cost_batch.ps1` → `monitors.cost_batch`. 저장 위치는 비용 화면에서 읽는 DB와 같습니다.
+
+색상: 파랑은 브라우저·허브, 초록은 모니터, 보라는 조회 대상, 노랑은 DB, 주황은 예약·배치, 회색 점선은 로컬 설정입니다.
 
 ### 폴더 구조
 
