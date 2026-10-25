@@ -27,12 +27,12 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 
-from webserver import local_server, open_chrome
+from webserver import favicon, local_server, open_chrome
 
 API = "https://management.azure.com/subscriptions/{sub}/providers/Microsoft.CostManagement/query?api-version=2023-11-01"
 CACHE_SECONDS = 300
 GROUPS = {"rg": "ResourceGroupName", "service": "ServiceName", "resource": "ResourceId"}
-MAX_QUERY_DAYS = {"rg": 90, "service": 90, "resource": 31}
+MAX_QUERY_DAYS = {group: 31 for group in GROUPS}
 DB_PATH = Path(__file__).with_name("cost_monitor.db")
 PUBLIC_HOST = "cost-monitor.local"
 
@@ -66,13 +66,14 @@ def access_token() -> str:
 def period(range_key: str, from_value: str | None = None, to_value: str | None = None) -> tuple[date, date]:
     today = date.today()
     if range_key == "last7":
-        # 비용은 당일 값이 부분 집계이므로 최근 7일은 어제까지 조회한다.
         return today - timedelta(days=7), today - timedelta(days=1)
     if range_key == "last30":
         return today - timedelta(days=30), today - timedelta(days=1)
     if range_key == "lastmonth":
         last = today.replace(day=1) - timedelta(days=1)
         return last.replace(day=1), last
+    if range_key == "month":
+        return today.replace(day=1), today
     if range_key == "custom":
         if not from_value or not to_value:
             raise ValueError("시작일과 종료일을 모두 지정하세요.")
@@ -83,20 +84,25 @@ def period(range_key: str, from_value: str | None = None, to_value: str | None =
         if start > end:
             raise ValueError("시작일은 종료일보다 늦을 수 없습니다.")
         return start, end
-    return today.replace(day=1), today  # 이번 달
+    raise ValueError("잘못된 조회 기간입니다.")
 
 
 def azure_query(range_key: str, group: str, from_value: str | None = None, to_value: str | None = None) -> dict:
-    key = (range_key, group, from_value, to_value)
+    start, end = period(range_key, from_value, to_value)
+    return azure_fetch(start, end, group, range_key)
+
+
+def azure_fetch(start: date, end: date, group: str, range_key: str = "custom") -> dict:
+    """Azure 요청 1회만 최대 31일로 제한한다. 로컬 DB 조회에는 제한이 없다."""
+    if group not in GROUPS:
+        raise ValueError("잘못된 비용 그룹입니다.")
+    days = (end - start).days + 1
+    if not 1 <= days <= MAX_QUERY_DAYS[group]:
+        raise ValueError("Azure API는 시작일과 종료일을 포함하여 최대 31일까지 조회할 수 있습니다.")
+    key = (range_key, group, str(start), str(end))
     hit = _cache.get(key)
     if hit and time.time() - hit[0] < CACHE_SECONDS:
         return hit[1]
-    start, end = period(range_key, from_value, to_value)
-    days = (end - start).days + 1
-    max_days = MAX_QUERY_DAYS[group]
-    if days > max_days:
-        label = "리소스" if group == "resource" else "서비스" if group == "service" else "리소스 그룹"
-        raise ValueError(f"{label} 조회 기간은 최대 {max_days}일까지 가능합니다. 현재 선택: {days}일")
     body = {"type": "ActualCost", "timeframe": "Custom",
             "timePeriod": {"from": f"{start}T00:00:00Z", "to": f"{end}T23:59:59Z"},
             "dataset": {"granularity": "Daily", "aggregation": {"totalCost": {"name": "Cost", "function": "Sum"}},
@@ -170,9 +176,9 @@ def init_db(path: Path = DB_PATH):
 
 
 def local_query(range_key: str, group: str, from_value: str | None, to_value: str | None) -> dict | None:
+    start, end = period(range_key, from_value, to_value)
     if not DB_PATH.exists():
         return None
-    start, end = period(range_key, from_value, to_value)
     with sqlite3.connect(DB_PATH) as conn:
         subscription_id = SUBSCRIPTION.get("id")
         runs = conn.execute(
@@ -233,7 +239,7 @@ def query(range_key: str, group: str, from_value: str | None = None,
 
 HTML_PAGE = r'''<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Azure Cost Monitor</title><style>
+<title>Azure Cost Monitor</title>__FAVICON__<style>
  .viz-root{color-scheme:light;--page:#f9f9f7;--surface-1:#fcfcfb;--text-primary:#0b0b0b;--text-secondary:#52514e;--muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;--border:rgba(11,11,11,.10);
 --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#6250d6;--other:#b5b3ab;--critical:#d03b3b}
 @media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])) .viz-root{color-scheme:dark;--page:#0d0d0d;--surface-1:#1a1a19;--text-primary:#f0efec;--text-secondary:#c3c2b7;--grid:#2c2c2a;--axis:#383835;--border:rgba(255,255,255,.10);
@@ -275,7 +281,7 @@ details summary{cursor:pointer;color:var(--text-secondary);font-size:13px;margin
 <div class="card"><h2>일별 비용</h2><div class="sub">비용은 보통 8~24시간 늦게 반영되며, 오늘 값은 부분 집계입니다.</div>
 <div class="legend" id="legend"></div><div class="chart" id="chart"><div class="tip" id="tip"></div></div></div>
 <div class="card"><h2 id="tblTitle">항목별 합계</h2><table><thead><tr><th>항목</th><th class="num">합계</th><th class="num">비중</th><th class="num">일평균</th><th class="num">최근일</th></tr></thead><tbody id="tbl"></tbody></table>
-<details><summary>일별 표 보기</summary><table><thead><tr><th>날짜</th><th class="num">합계</th><th>항목별 비용</th></tr></thead><tbody id="daily"></tbody></table></details></div>
+<details><summary>일별 표 보기</summary><table><thead><tr><th>날짜</th><th class="num">합계</th><th>항목</th><th class="num">비용</th></tr></thead><tbody id="daily"></tbody></table></details></div>
 </div></div>
 <script>
 const $=s=>document.querySelector(s);const SLOTS=7;let state={range:'last7',group:'rg',source:'local',from:'',to:''},data=null;
@@ -288,6 +294,7 @@ const ymd=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${Str
  function dates(from,to){const out=[];for(let d=new Date(from+'T00:00:00');d<=new Date(to+'T00:00:00');d.setDate(d.getDate()+1))out.push(ymd(d));return out}
  function setDateFields(from,to){state.from=from;state.to=to;$('#fromDate').value=from;$('#toDate').value=to}
  function presetDates(range){const today=new Date();let start,end=new Date(today);if(range==='last7'){start=new Date(today);start.setDate(start.getDate()-7);end.setDate(end.getDate()-1)}else if(range==='last30'){start=new Date(today);start.setDate(start.getDate()-30);end.setDate(end.getDate()-1)}else if(range==='lastmonth'){start=new Date(today.getFullYear(),today.getMonth()-1,1);end=new Date(today.getFullYear(),today.getMonth(),0)}else{start=new Date(today.getFullYear(),today.getMonth(),1)}setDateFields(ymd(start),ymd(end))}
+ const periodDays=(from,to)=>Math.round((Date.parse(to+'T00:00:00Z')-Date.parse(from+'T00:00:00Z'))/86400000)+1;
 function niceMax(v){if(v<=0)return 1;const p=Math.pow(10,Math.floor(Math.log10(v)));const n=v/p;return(n<=1?1:n<=2?2:n<=5?5:10)*p}
 function render(){if(!data)return;fmt=money(data.currency);
 const days=dates(data.from,data.to);const tot={};for(const r of data.rows)tot[r.group]=(tot[r.group]||0)+r.cost;
@@ -301,7 +308,7 @@ const dayTot=d=>Object.values(byDay[d]).reduce((a,b)=>a+b,0);const total=days.re
 const today=data.today,last=[...days].reverse().find(d=>d<today&&dayTot(d)>0)||days[days.length-1];
 const full=days.filter(d=>d<today),avg=full.length?full.reduce((a,d)=>a+dayTot(d),0)/full.length:total;
 const tiles=[['기간 합계',fmt(total),`${data.from} ~ ${data.to}`],[`최근일 (${last.slice(5)})`,fmt(dayTot(last)),'반영 완료된 가장 최근 날짜'],['일평균',fmt(avg),`오늘 제외 ${full.length}일 기준`]];
-if(data.range==='month'){// 최근 7일(오늘 제외) 평균으로 남은 날을 채운다. 오늘은 부분 집계라 평균과의 차이만큼 보탠다.
+if(data.range==='month'){
 const recent=full.slice(-7),rate=recent.length?recent.reduce((a,d)=>a+dayTot(d),0)/recent.length:avg;
 const left=data.days_in_month-full.length-1,todayCost=days.includes(today)?dayTot(today):0;
 tiles.push(['월말 예상',fmt(total+Math.max(rate-todayCost,0)+rate*Math.max(left,0)),`최근 ${recent.length}일 평균 ${fmt(rate)} × 남은 일수 (단순 추정)`])}
@@ -331,9 +338,9 @@ const b=$('#chart').getBoundingClientRect();let lx=e.clientX-b.left+14;if(lx+tip
 // tables (색에 기대지 않는 표 보기)
 const lastAll=g=>data.rows.filter(r=>r.group===g&&r.date===last).reduce((a,r)=>a+r.cost,0);
 $('#tbl').innerHTML=ranked.length?ranked.map(g=>`<tr><td><i style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${col(key(g))}"></i>${esc(g)}</td><td class="num">${fmt(tot[g])}</td><td class="num">${total?(tot[g]/total*100).toFixed(1):0}%</td><td class="num">${fmt(tot[g]/Math.max(days.length,1))}</td><td class="num">${fmt(lastAll(g))}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">비용 데이터가 없습니다.</td></tr>';
- $('#daily').innerHTML=[...days].reverse().map(d=>{const items=Object.entries(byDay[d]).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);const detail=items.length?items.map(([name,value])=>`<span class="daily-item">${esc(name)} ${fmt(value)}</span>`).join(''):'-';return `<tr><td>${d}</td><td class="num">${fmt(dayTot(d))}</td><td>${detail}</td></tr>`}).join('')}
+ $('#daily').innerHTML=[...days].reverse().map(d=>{const items=Object.entries(byDay[d]).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);if(!items.length)return `<tr><td>${d}</td><td class="num">${fmt(dayTot(d))}</td><td>-</td><td class="num">-</td></tr>`;return items.map(([name,value],i)=>`<tr>${i===0?`<td rowspan="${items.length}">${d}</td><td class="num" rowspan="${items.length}">${fmt(dayTot(d))}</td>`:''}<td>${esc(name)}</td><td class="num">${fmt(value)}</td></tr>`).join('')}).join('')}
  function setLoading(on){$('#loading').classList.toggle('on',on);$('#refresh').classList.toggle('is-loading',on);$('#refreshLabel').textContent=on?'조회 중…':'새로고침';document.querySelectorAll('.seg button,.dates button,#refresh').forEach(b=>b.disabled=on);document.querySelector('.viz-root').setAttribute('aria-busy',String(on))}
- async function load(){$('#refresh').disabled=true;$('#err').innerHTML='';setLoading(true);
+ async function load(){$('#err').innerHTML='';if(state.source==='azure'&&periodDays(state.from,state.to)>31){$('#err').innerHTML='<div class="err">Azure API는 시작일과 종료일을 포함하여 최대 31일까지 조회할 수 있습니다. 로컬 DB 조회에는 기간 제한이 없습니다.</div>';return}$('#refresh').disabled=true;setLoading(true);
  try{const params=new URLSearchParams({range:state.range,group:state.group,source:state.source});if(state.range==='custom'){params.set('from',state.from);params.set('to',state.to)}const r=await fetch(`/api/cost?${params}`);const d=await r.json();if(d.error){$('#err').innerHTML=`<div class="err">${esc(d.error)}</div>`;return}data=d;render()}
  catch(e){$('#err').innerHTML=`<div class="err">${esc(e.message)}</div>`}finally{setLoading(false);$('#refresh').disabled=false}}
  document.querySelectorAll('#range button').forEach(b=>b.onclick=()=>{state.range=b.dataset.v;presetDates(state.range);document.querySelectorAll('#range button').forEach(x=>x.classList.toggle('on',x===b));load()});
@@ -359,17 +366,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlparse(self.path)
         if url.path == "/":
-            self.send_body(HTML_PAGE.encode("utf-8"), "text/html; charset=utf-8")
+            self.send_body(HTML_PAGE.replace("__FAVICON__", favicon("₩", "#2563eb")).encode("utf-8"), "text/html; charset=utf-8")
         elif url.path == "/api/cost":
             qs = parse_qs(url.query)
-            range_key = (qs.get("range") or ["last7"])[0]
+            range_key = (qs.get("range") or ["last30"])[0]
             group = (qs.get("group") or ["rg"])[0]
             source = (qs.get("source") or ["local"])[0]
             from_value = (qs.get("from") or [None])[0]
             to_value = (qs.get("to") or [None])[0]
             if from_value or to_value:
                 range_key = "custom"
-            if range_key not in ("month", "last7", "last30", "lastmonth", "custom") or group not in GROUPS or source not in ("local", "azure"):
+            if group not in GROUPS or source not in ("local", "azure"):
                 self.send_json({"error": "잘못된 조회 조건"})
                 return
             try:

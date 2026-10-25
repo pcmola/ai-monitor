@@ -20,6 +20,7 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -81,6 +82,8 @@ public final class MainActivity extends Activity {
 
   private void restoreReports() {
     for (Provider provider : Provider.values()) {
+      // Claude now uses the official browser session only. Do not load old tokens/reports.
+      if (provider == Provider.CLAUDE) continue;
       try {
         JSONObject saved = store.load(provider);
         liveConnections.put(
@@ -107,14 +110,18 @@ public final class MainActivity extends Activity {
           return insets;
         });
     LinearLayout header = horizontal();
-    header.setPadding(dp(20), dp(16), dp(16), dp(16));
+    header.setPadding(dp(14), dp(6), dp(12), dp(6));
     header.setGravity(Gravity.CENTER_VERTICAL);
     header.setBackgroundColor(INK);
     LinearLayout heading = vertical();
-    heading.addView(text("CODE SPEND / USAGE", 11, 0xff8fcdbf, true));
-    heading.addView(text("구독 사용량", 26, WHITE, true));
+    heading.addView(text("구독 사용량", 22, WHITE, true));
     header.addView(heading, new LinearLayout.LayoutParams(0, -2, 1));
-    Button help = button("연결 안내", WHITE, INK);
+    Button refresh = button(busy ? "처리 중…" : "새로고침", WHITE, INK);
+    refresh.setEnabled(!busy);
+    refresh.setOnClickListener(v -> refreshLive(true));
+    header.addView(refresh);
+    Button help = button("?", WHITE, INK);
+    help.setContentDescription("연결 안내");
     help.setOnClickListener(v -> showHelp());
     header.addView(help);
     root.addView(header);
@@ -122,15 +129,7 @@ public final class MainActivity extends Activity {
     scrollView = scroll;
     scroll.setFillViewport(true);
     content = vertical();
-    content.setPadding(dp(16), dp(12), dp(16), dp(24));
-    content.addView(note("Claude Code · Codex의 남은 한도와 초기화 시각\nAPI 비용·Azure 비용은 조회하지 않습니다."));
-    Button refresh = button(busy ? "처리 중…" : "새로고침", INK, WHITE);
-    refresh.setEnabled(!busy);
-    refresh.setOnClickListener(
-        v -> {
-          refreshLive(true);
-        });
-    content.addView(refresh, full());
+    content.setPadding(dp(12), dp(2), dp(12), dp(12));
     for (Provider provider : Provider.values()) renderProvider(provider);
     scroll.addView(content);
     root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -141,10 +140,10 @@ public final class MainActivity extends Activity {
   private void renderProvider(Provider provider) {
     UsageReport report = reports.get(provider);
     LinearLayout card = vertical();
-    card.setPadding(dp(18), dp(18), dp(18), dp(18));
+    card.setPadding(dp(14), dp(10), dp(14), dp(10));
     card.setBackground(shape(WHITE, LINE, 18));
     LinearLayout.LayoutParams margin = new LinearLayout.LayoutParams(-1, -2);
-    margin.setMargins(0, dp(14), 0, 0);
+    margin.setMargins(0, dp(8), 0, 0);
     card.setLayoutParams(margin);
     LinearLayout title = horizontal();
     title.setGravity(Gravity.CENTER_VERTICAL);
@@ -152,20 +151,34 @@ public final class MainActivity extends Activity {
     mark.setGravity(Gravity.CENTER);
     mark.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
     mark.setBackground(shape(provider.color, provider.color, 10));
-    title.addView(mark, new LinearLayout.LayoutParams(dp(38), dp(38)));
-    TextView name = text(provider.title, 21, INK, true);
+    title.addView(mark, new LinearLayout.LayoutParams(dp(32), dp(32)));
+    TextView name = text(provider.title, 20, INK, true);
     name.setPadding(dp(12), 0, dp(6), 0);
     title.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
     title.addView(
-        text(report == null || report.plan == null ? "구독" : report.plan, 12, MUTED, true));
-    card.addView(title);
-    card.addView(
-        note(
+        text(
             provider == Provider.CLAUDE
-                ? "로그인 토큰으로 직접 조회 · 60분마다 갱신"
-                : hasLiveAuth(Provider.CODEX)
-                    ? "현재 한도 직접 조회 · 화면이 열려 있는 동안 1분마다 갱신"
-                    : "Codex 인증을 한 번 가져오면 현재 한도를 직접 조회합니다"));
+                ? "공식 웹"
+                : report == null || report.plan == null ? "구독" : report.plan,
+            12,
+            MUTED,
+            true));
+    Button more = button("⋮", MUTED, WHITE);
+    more.setContentDescription(provider.title + " 추가 메뉴");
+    more.setEnabled(!busy);
+    more.setOnClickListener(v -> providerMenu(provider, more));
+    title.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
+    card.addView(title);
+    if (provider == Provider.CLAUDE) {
+      card.addView(compactNote("휴대폰 브라우저에서 로그인하고 사용량을 확인하세요."));
+      Button login = button("Claude 로그인 · 사용량 보기 ↗", WHITE, provider.color);
+      login.setContentDescription(provider.title + " 공식 사용량 웹페이지를 브라우저로 열기");
+      login.setOnClickListener(v -> BrowserLauncher.open(this, provider));
+      card.addView(login, full());
+      card.addView(compactNote("로그인은 브라우저에 유지됩니다. 앱 카드에는 수치가 연동되지 않습니다."));
+      content.addView(card);
+      return;
+    }
     String error = errors.get(provider);
     if (error != null) {
       TextView warning = note(error + (report == null ? "" : "\n아래는 마지막으로 확인한 값입니다."));
@@ -182,7 +195,13 @@ public final class MainActivity extends Activity {
     } else {
       for (UsageReport.Window window : report.windows) renderWindow(card, window, provider);
       if (report.windows.isEmpty()) card.addView(note("이 기록에는 사용 한도 정보가 없습니다. 토큰 합계만 표시합니다."));
-      card.addView(note("기준 시각: " + time(report.asOf)));
+      card.addView(
+          compactNote(
+              "기준 "
+                  + time(report.asOf)
+                  + (hasLiveAuth(provider)
+                      ? provider == Provider.CLAUDE ? " · 60분 갱신" : " · 1분 갱신"
+                      : " · 가져온 기록")));
       if (provider == Provider.CODEX) {
         if (!hasLiveAuth(Provider.CODEX))
           card.addView(note("아래는 예전에 가져온 기록입니다. Codex 인증을 연결해야 현재 한도를 자동 갱신할 수 있습니다."));
@@ -206,59 +225,65 @@ public final class MainActivity extends Activity {
         }
       }
     }
-    Button connect =
-        button(
-            provider == Provider.CLAUDE ? "Claude 인증 가져오기" : "Codex 인증 가져오기",
-            WHITE,
-            provider.color);
+    Button connect = button("Codex 인증 가져오기", WHITE, provider.color);
     connect.setEnabled(!busy);
-    connect.setOnClickListener(
-        v -> {
-          if (provider == Provider.CLAUDE) claudeDialog();
-          else codexDialog();
-        });
-    card.addView(connect, full());
-    Button official = button("공식 사용량 페이지  ↗", provider.color, WHITE);
-    official.setOnClickListener(
-        v -> {
-          try {
-            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(provider.accountUrl)));
-          } catch (Exception ignored) {
-            Toast.makeText(this, "브라우저를 열 수 없습니다.", Toast.LENGTH_SHORT).show();
-          }
-        });
-    card.addView(official, full());
+    connect.setOnClickListener(v -> codexDialog());
+    LinearLayout actions = horizontal();
+    actions.addView(connect, new LinearLayout.LayoutParams(0, -2, 1));
+    Button official = button("사용량 웹페이지 ↗", provider.color, WHITE);
+    official.setContentDescription(provider.title + " 공식 사용량 웹페이지를 브라우저로 열기");
+    official.setOnClickListener(v -> BrowserLauncher.open(this, provider));
+    LinearLayout.LayoutParams webSize = new LinearLayout.LayoutParams(0, -2, 1);
+    webSize.setMargins(dp(8), 0, 0, 0);
+    actions.addView(official, webSize);
+    card.addView(actions, full());
+    content.addView(card);
+  }
+
+  private void providerMenu(Provider provider, View anchor) {
+    PopupMenu menu = new PopupMenu(this, anchor);
+    menu.getMenu()
+        .add("연결 안내")
+        .setOnMenuItemClickListener(
+            item -> {
+              showHelp();
+              return true;
+            });
     if (provider == Provider.CODEX && !hasLiveAuth(Provider.CODEX)) {
-      Button local = button("기록 가져오기 (오프라인)", MUTED, WHITE);
-      local.setEnabled(!busy);
-      local.setOnClickListener(v -> pick(IMPORT_CODEX, true));
-      card.addView(local, full());
+      menu.getMenu()
+          .add("기록 가져오기 (오프라인)")
+          .setOnMenuItemClickListener(
+              item -> {
+                pick(IMPORT_CODEX, true);
+                return true;
+              });
     }
     if (store.configured(provider)) {
-      Button remove = button("저장된 " + provider.title + " 자료 삭제", MUTED, WHITE);
-      remove.setEnabled(!busy);
-      remove.setOnClickListener(
-          v ->
-              new AlertDialog.Builder(this)
-                  .setTitle("이 기기의 자료만 삭제할까요?")
-                  .setMessage("PC 원본 파일과 서비스 계정은 변경하지 않습니다.")
-                  .setNegativeButton("취소", null)
-                  .setPositiveButton(
-                      "삭제",
-                      (d, which) -> {
-                        generation++;
-                        busy = false;
-                        store.remove(provider);
-                        liveConnections.put(provider, false);
-                        refreshPolicy.reset(provider);
-                        reports.remove(provider);
-                        errors.remove(provider);
-                        buildUi();
-                      })
-                  .show());
-      card.addView(remove, full());
+      menu.getMenu()
+          .add("저장된 " + provider.title + " 자료 삭제")
+          .setOnMenuItemClickListener(
+              item -> {
+                new AlertDialog.Builder(this)
+                    .setTitle("이 기기의 자료만 삭제할까요?")
+                    .setMessage("PC 원본 파일과 서비스 계정은 변경하지 않습니다.")
+                    .setNegativeButton("취소", null)
+                    .setPositiveButton(
+                        "삭제",
+                        (d, which) -> {
+                          generation++;
+                          busy = false;
+                          store.remove(provider);
+                          liveConnections.put(provider, false);
+                          refreshPolicy.reset(provider);
+                          reports.remove(provider);
+                          errors.remove(provider);
+                          buildUi();
+                        })
+                    .show();
+                return true;
+              });
     }
-    content.addView(card);
+    menu.show();
   }
 
   private void renderWindow(LinearLayout card, UsageReport.Window window, Provider provider) {
@@ -266,11 +291,11 @@ public final class MainActivity extends Activity {
     LinearLayout row = horizontal();
     row.setGravity(Gravity.CENTER_VERTICAL);
     row.addView(
-        text(periodLabel(window.label()), 15, INK, true), new LinearLayout.LayoutParams(0, -2, 1));
+        text(periodLabel(window.label()), 14, INK, true), new LinearLayout.LayoutParams(0, -2, 1));
     TextView remaining =
         text(
             expired ? "현재값 미확인" : percent(100 - window.usedPercent()) + "% 남음",
-            expired ? 16 : 25,
+            expired ? 15 : 22,
             expired ? MUTED : INK,
             true);
     remaining.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
@@ -279,14 +304,14 @@ public final class MainActivity extends Activity {
     ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
     bar.setMax(1000);
     bar.setProgress((int) Math.round(window.usedPercent() * 10));
-    bar.setProgressTintList(ColorStateList.valueOf(expired ? MUTED : provider.color));
-    bar.setProgressBackgroundTintList(ColorStateList.valueOf(LINE));
+    bar.setProgressTintList(ColorStateList.valueOf(UsageColors.bar(window.usedPercent(), expired)));
+    bar.setProgressBackgroundTintList(ColorStateList.valueOf(UsageColors.TRACK));
     bar.setContentDescription(window.label() + " 기준 시각 사용률 " + percent(window.usedPercent()) + "%");
-    LinearLayout.LayoutParams barSize = new LinearLayout.LayoutParams(-1, dp(8));
-    barSize.setMargins(0, dp(9), 0, 0);
+    LinearLayout.LayoutParams barSize = new LinearLayout.LayoutParams(-1, dp(6));
+    barSize.setMargins(0, dp(5), 0, 0);
     card.addView(bar, barSize);
     card.addView(
-        note(
+        compactNote(
             expired
                 ? "기록의 초기화 시각이 지났습니다. 현재 한도를 다시 확인하세요."
                 : percent(window.usedPercent())
@@ -296,75 +321,8 @@ public final class MainActivity extends Activity {
                         : "초기화 " + time(window.resetsAt()))));
   }
 
-  private void claudeDialog() {
-    LinearLayout form = vertical();
-    form.setPadding(dp(22), dp(8), dp(22), 0);
-    form.addView(
-        note(
-            "PC의 .claude/.credentials.json을 선택하거나 claudeAiOauth.accessToken을 입력하세요. 관리자 키·워크스페이스"
-                + " ID는 필요 없습니다.\n"
-                + "로그인 토큰은 비밀번호처럼 보호하세요. refreshToken은 저장하지 않습니다."));
-    EditText token = new EditText(this);
-    token.setSingleLine(true);
-    token.setHint("accessToken (저장된 토큰은 표시하지 않음)");
-    token.setTextSize(14);
-    token.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-    token.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
-    token.setSaveEnabled(false);
-    form.addView(token);
-    Button file = button(".credentials.json 파일 선택", Provider.CLAUDE.color, WHITE);
-    form.addView(file, full());
-    TextView validation = text("", 12, BAD, false);
-    form.addView(validation);
-    ScrollView scroll = new ScrollView(this);
-    scroll.addView(form);
-    AlertDialog dialog =
-        new AlertDialog.Builder(this)
-            .setTitle("Claude 구독 사용량 연결")
-            .setView(scroll)
-            .setNegativeButton("취소", null)
-            .setPositiveButton("저장 후 조회", null)
-            .create();
-    file.setOnClickListener(
-        v -> {
-          token.setText("");
-          dialog.dismiss();
-          pick(IMPORT_CLAUDE, false);
-        });
-    dialog.setOnShowListener(
-        d ->
-            dialog
-                .getButton(AlertDialog.BUTTON_POSITIVE)
-                .setOnClickListener(
-                    v -> {
-                      try {
-                        ClaudeUsageClient.Credential replacement =
-                            ClaudeUsageClient.parseCredential(
-                                token.getText().toString().trim(), Instant.now());
-                        generation++;
-                        busy = false;
-                        saveClaude(replacement);
-                        liveConnections.put(Provider.CLAUDE, true);
-                        refreshPolicy.reset(Provider.CLAUDE);
-                        reports.remove(Provider.CLAUDE);
-                        errors.remove(Provider.CLAUDE);
-                        token.setText("");
-                        dialog.dismiss();
-                        refreshClaude();
-                      } catch (Exception ignored) {
-                        validation.setText("유효한 accessToken이 필요합니다. 관리자 API 키는 사용하지 않습니다.");
-                      }
-                    }));
-    dialog.show();
-    if (dialog.getWindow() != null) {
-      dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-      dialog
-          .getWindow()
-          .setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
-    }
-  }
-
   private void pick(int request, boolean multiple) {
+    if (request == IMPORT_CLAUDE) return;
     Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
     intent.addCategory(Intent.CATEGORY_OPENABLE);
     intent.setType("*/*");
@@ -449,8 +407,7 @@ public final class MainActivity extends Activity {
     super.onActivityResult(request, result, data);
     if (result != RESULT_OK
         || data == null
-        || (request != IMPORT_CLAUDE && request != IMPORT_CODEX && request != IMPORT_CODEX_AUTH))
-      return;
+        || (request != IMPORT_CODEX && request != IMPORT_CODEX_AUTH)) return;
     List<Uri> uris = new ArrayList<>();
     if (data.getClipData() != null) {
       for (int i = 0; i < data.getClipData().getItemCount(); i++) {
@@ -566,11 +523,7 @@ public final class MainActivity extends Activity {
   }
 
   private boolean hasLiveAuth(Provider provider) {
-    return Boolean.TRUE.equals(liveConnections.get(provider));
-  }
-
-  private void refreshClaude() {
-    refreshLive(true);
+    return provider != Provider.CLAUDE && Boolean.TRUE.equals(liveConnections.get(provider));
   }
 
   private void refreshLive(boolean manual) {
@@ -681,7 +634,8 @@ public final class MainActivity extends Activity {
   private void importDebugFiles() {
     if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0) return;
     boolean found = false;
-    for (Provider provider : Provider.values()) if (debugFile(provider).isFile()) found = true;
+    for (Provider provider : Provider.values())
+      if (provider != Provider.CLAUDE && debugFile(provider).isFile()) found = true;
     if (!found) return;
     busy = true;
     buildUi();
@@ -694,6 +648,7 @@ public final class MainActivity extends Activity {
           boolean changedClaude = false;
           boolean changedCodex = false;
           for (Provider provider : Provider.values()) {
+            if (provider == Provider.CLAUDE) continue;
             File file = debugFile(provider);
             if (!file.isFile()) continue;
             try {
@@ -796,11 +751,12 @@ public final class MainActivity extends Activity {
 
   private void showHelp() {
     new AlertDialog.Builder(this)
-        .setTitle("휴대폰에서 현재 한도 직접 조회")
+        .setTitle("사용량 연결 안내")
         .setMessage(
-            "Claude: .claude/.credentials.json의 accessToken으로 구독 사용량을 직접 조회합니다. 관리자 키·워크스페이스 ID는 필요"
-                + " 없습니다. Claude Code 내부 사용량 주소를 이용하므로 변경·접근 제한 가능성이 있습니다. 만료되면 PC에서 인증을 갱신한 뒤 다시"
-                + " 가져오세요. 자동 토큰 갱신은 하지 않습니다.\n\n"
+            "Claude: 'Claude 로그인 · 사용량 보기'를 누르고 공식 웹페이지에서 로그인하세요. 같은 브라우저를 사용하면 로그인 세션이 유지됩니다."
+                + " 세션 만료·로그아웃·브라우저 데이터 삭제 시에는 다시 로그인해야 합니다. PC 인증 파일은 필요 없습니다."
+                + " 앱은 브라우저의 비밀번호·쿠키·토큰을 읽거나 수치를 자동으로 가져오지 않습니다."
+                + " 이전에 가져온 Claude 자료는 추가 메뉴에서 직접 삭제할 수 있습니다.\n\n"
                 + "Codex: .codex/auth.json의 tokens.access_token과 account_id를 한 번 가져오면 휴대폰이 직접 현재"
                 + " 한도를 조회합니다. 앱 화면이 열려 있을 때 1분마다, 다시 화면을 열면 갱신 시점이 지났을 때 조회합니다. PC 서버나 세션 기록 재추출은"
                 + " 필요 없습니다. Codex 내부 사용량 주소이므로 변경·접근 제한 가능성이 있습니다. 인증 만료 시 다시 가져오세요."
@@ -825,6 +781,12 @@ public final class MainActivity extends Activity {
     TextView view = text(value, 12, MUTED, false);
     view.setLineSpacing(dp(3), 1f);
     view.setPadding(0, dp(8), 0, dp(12));
+    return view;
+  }
+
+  private TextView compactNote(String value) {
+    TextView view = text(value, 11, MUTED, false);
+    view.setPadding(0, dp(3), 0, dp(6));
     return view;
   }
 

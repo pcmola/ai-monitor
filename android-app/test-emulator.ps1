@@ -66,21 +66,12 @@ foreach ($removedText in @("API 비용", "관리자 API 키", "전용 공간의 
 }
 Write-Host "PASS: obsolete API billing tab and admin key fields removed"
 
-Tap-Text "Claude 인증 가져오기"
-$settings = Get-Hierarchy "03-connection-dialog"
-Assert-Text $settings "Claude 구독 사용량 연결"
-$inputs = @($settings.SelectNodes("//node[@class='android.widget.EditText']"))
-if ($inputs.Count -ne 1) { throw "Expected one token input and no workspace ID input." }
-if ($inputs[0].password -ne "true") { throw "Token input is not masked." }
-Write-Host "PASS: one masked login token field; no workspace field"
-Tap-Text "저장 후 조회"
-$validation = Get-Hierarchy "04-empty-key-validation"
-Assert-Text $validation "유효한 accessToken이 필요합니다. 관리자 API 키는 사용하지 않습니다."
-Tap-Text ".credentials.json 파일 선택"
-$picker = (Invoke-Device @("shell", "dumpsys", "activity", "activities")) -join " "
-if ($picker -notmatch "documentsui") { throw "Android document picker was not opened." }
-Invoke-Device @("shell", "input", "keyevent", "4") | Out-Null
-Write-Host "PASS: native credential file picker opens and can be cancelled"
+Assert-Text $homeScreen "Claude 로그인 · 사용량 보기 ↗"
+foreach ($removedText in @("Claude 인증 가져오기", "Claude 구독 사용량 연결")) {
+    if (Find-Text $homeScreen $removedText) { throw "Legacy Claude token UI remains: $removedText" }
+}
+Assert-Text $homeScreen "로그인은 브라우저에 유지됩니다. 앱 카드에는 수치가 연동되지 않습니다."
+Write-Host "PASS: Claude uses official browser login; no token import or stale quota card"
 
 Invoke-Device @("shell", "am", "force-stop", "local.aimonitor") | Out-Null
 Invoke-Device @("shell", "am", "start", "-W", "-n", "local.aimonitor/.MainActivity") | Out-Null
@@ -93,9 +84,8 @@ for ($scrollStep=0; $scrollStep -lt 4; $scrollStep++) {
 }
 $codex = Get-Hierarchy "06-codex"
 Assert-Text $codex "Codex 인증 가져오기"
-if (-not (Find-Text $codex "현재 한도 직접 조회 · 화면이 열려 있는 동안 1분마다 갱신") -and
-    -not (Find-Text $codex "Codex 인증을 한 번 가져오면 현재 한도를 직접 조회합니다")) {
-    throw "Codex live connection guidance is missing."
+if (Find-Text $codex "API 비용·Azure 비용은 조회하지 않습니다.") {
+    throw "Removed introductory text is still present."
 }
 Tap-Text "Codex 인증 가져오기"
 $connection = Get-Hierarchy "06-codex-auth"
@@ -106,8 +96,16 @@ Tap-Text "저장 후 조회"
 $validation = Get-Hierarchy "06-codex-validation"
 Assert-Text $validation "유효한 Codex 로그인 인증이 필요합니다. API 키·세션 기록은 여기에 넣지 마세요."
 Tap-Text "auth.json 파일 선택"
-$picker = (Invoke-Device @("shell", "dumpsys", "activity", "activities")) -join " "
-if ($picker -notmatch "documentsui") { throw "Codex file picker did not open." }
+$pickerReady = $false
+for ($attempt = 0; $attempt -lt 20; $attempt++) {
+    $picker = (Invoke-Device @("shell", "dumpsys", "activity", "activities")) -join " "
+    if ($picker -match '(?s)(topResumedActivity|mResumedActivity)[^\r\n]*documentsui') {
+        $pickerReady = $true
+        break
+    }
+    Start-Sleep -Milliseconds 200
+}
+if (-not $pickerReady) { throw "Codex file picker did not open." }
 Invoke-Device @("shell", "input", "keyevent", "4") | Out-Null
 Write-Host "PASS: Codex live auth validation and native auth file picker"
 

@@ -16,7 +16,9 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse
 
-from webserver import local_server, open_chrome
+from webserver import favicon, local_server, open_chrome
+from tavily_usage import usage as tavily_usage
+from elevenlabs_usage import usage as elevenlabs_usage
 
 HOME = Path.home()
 CODEX_SESSIONS = HOME / ".codex" / "sessions"
@@ -270,32 +272,35 @@ def collect() -> dict:
         "now": iso(now),
         "claude": claude_limits(),
         "chatgpt": codex_usage(now),
+        "tavily": tavily_usage(),
+        "elevenlabs": elevenlabs_usage(),
     }
 
 
 HTML_PAGE = r'''<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI Usage Monitor</title><style>
+<title>AI Usage Monitor</title>__FAVICON__<style>
 :root{--ink:#172033;--muted:#718096;--line:#e5eaf0;--panel:#fff;--bg:#eef2f7;--track:#e8edf3;--ok:#2f9e6b;--warn:#d98a1c;--bad:#d64545;--claude:#d97757;--chatgpt:#10a37f}
 *{box-sizing:border-box}body{margin:0;color:var(--ink);font:14px/1.6 "Segoe UI","Malgun Gothic",sans-serif;background:var(--bg)}
 .top{height:58px;background:#13213a;color:#fff;display:flex;align-items:center;padding:0 24px;gap:14px}.mark{width:28px;height:28px;border-radius:8px;background:#42b883;display:grid;place-items:center;font-weight:800}.brand{font-size:16px;font-weight:700}.crumb{color:#aebbd0;font-size:12px}.top .sp{flex:1}
 button,select{font:inherit;border:1px solid #33476b;background:transparent;color:#fff;border-radius:8px;padding:5px 12px;cursor:pointer}button:hover,select:hover{background:#1f3152}select option{color:var(--ink);background:#fff}
-.wrap{max-width:1100px;margin:0 auto;padding:24px 16px 60px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;border-top:4px solid var(--c)}
-.head{display:flex;align-items:center;gap:10px;margin-bottom:14px}.logo{width:30px;height:30px;border-radius:8px;background:var(--c);color:#fff;display:grid;place-items:center;font-weight:800}.head h2{margin:0;font-size:18px}.plan{margin-left:auto;font-size:12px;background:#f1f4f8;border-radius:999px;padding:2px 10px;color:var(--muted);text-transform:capitalize}
-.limit{padding:12px 0;border-top:1px solid var(--line)}.limit:first-of-type{border-top:0}
-.row{display:flex;align-items:baseline;gap:8px}.lbl{font-weight:600}.left{margin-left:auto;font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}.left small{font-size:12px;color:var(--muted);font-weight:500;margin-left:2px}
-.bar{height:10px;background:var(--track);border-radius:5px;overflow:hidden;margin:6px 0 4px}.bar i{display:block;height:100%;border-radius:5px;transition:width .4s}
-.sub{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.wrap{max-width:1180px;margin:0 auto;padding:12px 16px 16px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+.card{min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;border-top:4px solid var(--c)}
+.head{display:flex;align-items:center;gap:8px;margin-bottom:8px}.logo{width:28px;height:28px;border-radius:7px;background:var(--c);color:#fff;display:grid;place-items:center;font-weight:800}.head h2{margin:0;font-size:17px}.plan{margin-left:auto;font-size:12px;background:#f1f4f8;border-radius:999px;padding:2px 10px;color:var(--muted);text-transform:capitalize}
+.limit{padding:7px 0;border-top:1px solid var(--line)}.limit:first-of-type{border-top:0}
+.row{display:flex;align-items:baseline;gap:8px}.lbl{font-weight:600}.left{margin-left:auto;font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}.left small{font-size:12px;color:var(--muted);font-weight:500;margin-left:2px}
+.bar{height:8px;background:var(--track);border-radius:4px;overflow:hidden;margin:4px 0 3px}.bar i{display:block;height:100%;border-radius:4px;transition:width .4s}
+.sub{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 8px;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
 .err{background:#fdecec;color:#9b2c2c;border-radius:8px;padding:10px 12px;font-size:13px}
-h3{font-size:13px;color:var(--muted);margin:18px 0 6px;font-weight:600}
-table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}th,td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right}th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:500}
-.foot{color:var(--muted);font-size:12px;margin-top:10px}.status{color:var(--muted);font-size:12px;text-align:right;margin-bottom:10px}
+.foot{color:var(--muted);font-size:12px;margin-top:6px}.status{color:var(--muted);font-size:12px;text-align:right;margin-bottom:8px}
 @media(max-width:820px){.grid{grid-template-columns:1fr}}
+@media(max-width:640px){.top{height:auto;min-height:58px;flex-wrap:wrap;padding:10px 12px;gap:8px}.top .crumb{display:none}.wrap{padding:10px 12px 16px}.card{padding:12px}.sub span{overflow-wrap:anywhere}}
 </style></head><body>
-<header class="top"><div class="mark">U</div><div class="brand">AI Usage Monitor</div><div class="crumb">Claude · ChatGPT 토큰 사용량</div><div class="sp"></div><select id="refreshInterval" title="자동 갱신 주기"><option value="5">5분</option><option value="10">10분</option><option value="30">30분</option><option value="60" selected>60분</option><option value="120">120분</option><option value="0">수동</option></select><button id="refresh">새로고침</button></header>
+<header class="top"><div class="mark">U</div><div class="brand">AI Usage Monitor</div><div class="crumb">Claude · ChatGPT · Tavily · ElevenLabs 사용량</div><div class="sp"></div><select id="refreshInterval" title="자동 갱신 주기"><option value="5">5분</option><option value="10">10분</option><option value="30">30분</option><option value="60" selected>60분</option><option value="120">120분</option><option value="0">수동</option></select><button id="refresh">새로고침</button></header>
 <div class="wrap"><div class="status" id="status">불러오는 중…</div><div class="grid">
 <section class="card" style="--c:var(--claude)" id="claude"></section><section class="card" style="--c:var(--chatgpt)" id="chatgpt"></section>
+<section class="card websearch" style="--c:#84704c" id="tavily"></section>
+<section class="card" style="--c:#4655b8" id="elevenlabs"></section>
 </div></div>
 <script>
 const $=s=>document.querySelector(s);let data=null,refreshTimer=null;const refreshKey='ai-usage-monitor-refresh-minutes';
@@ -303,17 +308,16 @@ function refreshMinutes(){return Number($('#refreshInterval').value)||0}
 function refreshText(){const m=refreshMinutes();return m?m+'분마다 자동 갱신':'수동 갱신'}
 function configureRefresh(){if(refreshTimer)clearInterval(refreshTimer);const m=refreshMinutes();localStorage.setItem(refreshKey,String(m));if(m)refreshTimer=setInterval(load,m*60000)}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function fmtNum(n){return n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'K':String(n)}
 function until(iso){if(!iso)return '';let s=Math.max(0,(new Date(iso)-Date.now())/1000);const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return (d?d+'일 ':'')+(d||h?h+'시간 ':'')+m+'분 후 리셋'}
 function clock(iso){return iso?new Date(iso).toLocaleString('ko-KR',{month:'numeric',day:'numeric',weekday:'short',hour:'2-digit',minute:'2-digit'}):''}
 function ago(iso){if(!iso)return '기록 없음';const m=Math.round((Date.now()-new Date(iso))/60000);return m<1?'방금 전':m<60?m+'분 전':m<1440?Math.round(m/60)+'시간 전':Math.round(m/1440)+'일 전'}
 function color(used){return used>=90?'var(--bad)':used>=70?'var(--warn)':'var(--ok)'}
-function limits(list){return list.map(l=>{const left=Math.max(0,100-l.used);return `<div class="limit"><div class="row"><span class="lbl">${esc(l.label)}</span><span class="left">${left.toFixed(0)}%<small>남음</small></span></div><div class="bar"><i style="width:${Math.min(100,l.used)}%;background:${color(l.used)}"></i></div><div class="sub"><span>${l.used.toFixed(0)}% 사용${l.note?' · '+esc(l.note):''}</span><span>${l.resets_at?esc(until(l.resets_at))+' · '+esc(clock(l.resets_at)):''}</span></div></div>`}).join('')}
-function local(lc){const w=lc.windows;return `<h3>로컬 기록 기준 토큰 사용량</h3><table><tr><th>구간</th><th>요청</th><th>출력 토큰</th><th>총 토큰(캐시 포함)</th></tr>${[['최근 5시간','5h'],['최근 7일','7d']].map(([n,k])=>`<tr><td>${n}</td><td>${w[k].requests}</td><td>${fmtNum(w[k].output)}</td><td>${fmtNum(w[k].total)}</td></tr>`).join('')}</table><div class="foot">마지막 사용: ${esc(ago(lc.last_activity))}</div>`}
-function card(el,name,logo,d,extra){el.innerHTML=`<div class="head"><div class="logo">${logo}</div><h2>${name}</h2>${d.plan?`<span class="plan">${esc(d.plan)}</span>`:''}</div>${d.error?`<div class="err">${esc(d.error)}</div>`:''}${limits(d.limits||[])}${extra||''}${d.local?local(d.local):''}`}
+function limits(list){return list.map(l=>{const left=Math.max(0,100-l.used),precision=l.precision??0;return `<div class="limit"><div class="row"><span class="lbl">${esc(l.label)}</span><span class="left">${left.toFixed(precision)}%<small>남음</small></span></div><div class="bar"><i style="width:${Math.min(100,left)}%;background:${color(l.used)}"></i></div><div class="sub"><span>${l.used.toFixed(precision)}% 사용${l.note?' · '+esc(l.note):''}</span><span>${l.resets_at?esc(until(l.resets_at))+' · '+esc(clock(l.resets_at)):''}</span></div></div>`}).join('')}
+function card(el,name,logo,d,extra){el.innerHTML=`<div class="head"><div class="logo">${logo}</div><h2>${name}</h2>${d.plan?`<span class="plan">${esc(d.plan)}</span>`:''}</div>${d.error?`<div class="err">${esc(d.error)}</div>`:''}${limits(d.limits||[])}${extra||''}`}
 async function load(){$('#status').textContent='불러오는 중…';try{const r=await fetch('/api/usage');data=await r.json();render();$('#status').textContent='업데이트: '+new Date().toLocaleTimeString('ko-KR')+' · '+refreshText()}catch(e){$('#status').textContent='불러오기 실패: '+e.message}}
 $('#refresh').onclick=load;const saved=localStorage.getItem(refreshKey);if(saved!==null&&[5,15,30,60,120,0].includes(Number(saved)))$('#refreshInterval').value=saved;$('#refreshInterval').onchange=()=>{configureRefresh();load()};configureRefresh();load();setInterval(render,30000);
-function render(){if(!data)return;card($('#claude'),'Claude','C',data.claude,'');card($('#chatgpt'),'ChatGPT','G',data.chatgpt,data.chatgpt.as_of?`<div class="foot">최근 한도 갱신: ${esc(clock(data.chatgpt.as_of))} (${esc(ago(data.chatgpt.as_of))})</div>`:'')}
+function creditCard(id,title,logo,value,limitLabel,note){const d=value||{limits:[],error:title+' 사용량을 불러오지 못했습니다.'},c=d.credits;card($(id),title,logo,d,c?`<div class="foot">잔여 <b>${Number(c.remaining).toLocaleString('ko-KR')} 크레딧</b> · ${limitLabel} ${Number(c.limit).toLocaleString('ko-KR')} 크레딧${note?' · '+note:''}</div><div class="foot">사용량 확인: ${esc(clock(d.as_of))} · API 조회는 최대 1분 간격</div>`:'')}
+function render(){if(!data)return;card($('#claude'),'Claude','C',data.claude,'');card($('#chatgpt'),'ChatGPT','G',data.chatgpt,data.chatgpt.as_of?`<div class="foot">최근 한도 갱신: ${esc(clock(data.chatgpt.as_of))} (${esc(ago(data.chatgpt.as_of))})</div>`:'');creditCard('#tavily','Tavily 웹검색','T',data.tavily,'월 한도','검색 횟수가 아닌 크레딧 기준');creditCard('#elevenlabs','ElevenLabs','Ⅱ',data.elevenlabs,'구독 한도','')}
 </script></body></html>'''
 
 
@@ -329,7 +333,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/":
-            self.send_body(HTML_PAGE.encode("utf-8"), "text/html; charset=utf-8")
+            self.send_body(HTML_PAGE.replace("__FAVICON__", favicon("U", "#10a37f")).encode("utf-8"), "text/html; charset=utf-8")
         elif path == "/api/usage":
             self.send_body(json.dumps(collect(), ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
         else:

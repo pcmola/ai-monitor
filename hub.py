@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from webserver import local_server, open_chrome, site_url
+from webserver import favicon, local_server, open_chrome, site_url
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 HUB_PORT, HUB_SITE, HUB_TITLE = 8770, "ai-monitor.local", "AI 모니터 허브"
@@ -280,7 +280,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlparse(self.path)
         if url.path == "/":
-            self.send_body(PAGE.replace("__TITLE__", HUB_TITLE).encode("utf-8"), "text/html; charset=utf-8")
+            self.send_body(PAGE.replace("__TITLE__", HUB_TITLE).replace("__FAVICON__", favicon("M", "#7c3aed")).encode("utf-8"),
+                           "text/html; charset=utf-8")
         elif url.path == "/api/status":
             try:
                 self.send_json({"servers": server_status(), "time": datetime.now().isoformat(timespec="seconds")})
@@ -326,7 +327,7 @@ class Handler(BaseHTTPRequestHandler):
 
 PAGE = r"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>__TITLE__</title>
+__FAVICON__<title>__TITLE__</title>
 <style>
 :root{--bg:#eef2f7;--panel:#fff;--ink:#1d2939;--muted:#667085;--line:#d9e0ea;--top:#13213a;--blue:#2563eb;
 --ok:#16a34a;--warn:#d97706;--bad:#dc2626;--off:#98a2b3;--soft:#f5f7fb;--code:#101827;--codeink:#e6edf6}

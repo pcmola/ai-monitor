@@ -69,7 +69,7 @@ def main() -> int:
         while cursor <= end:
             chunk_end = min(cursor + timedelta(days=cost_monitor.MAX_QUERY_DAYS[group] - 1), end)
             try:
-                result = cost_monitor.azure_query("custom", group, str(cursor), str(chunk_end))
+                result = cost_monitor.azure_fetch(cursor, chunk_end, group)
                 store(result, group, sub["id"])
                 print(f"[{group}] {cursor} ~ {chunk_end}: {len(result['rows'])}건 저장")
             except Exception as exc:

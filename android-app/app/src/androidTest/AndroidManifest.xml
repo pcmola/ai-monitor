@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="Code Spend link test">
+        <!-- Test APK only. Never packaged in CodeSpend.apk. No account access or network code. -->
+        <activity android:name="local.aimonitor.LinkTrapActivity" android:exported="true">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="chatgpt.com" />
+                <data android:scheme="https" android:host="claude.ai" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

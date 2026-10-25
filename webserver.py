@@ -74,3 +74,13 @@ def open_chrome(url: str):
         subprocess.Popen([str(chrome), url])
     else:
         webbrowser.open(url)
+
+
+def favicon(letter: str, color: str) -> str:
+    """Inline SVG favicon matching the local AI Master servers."""
+    from urllib.parse import quote
+    svg = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>"
+           f"<rect width='32' height='32' rx='7' fill='{color}'/>"
+           "<text x='16' y='23' font-family='Segoe UI,Arial,sans-serif' font-size='20' font-weight='800' "
+           f"fill='#fff' text-anchor='middle'>{letter}</text></svg>")
+    return f'<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,{quote(svg)}">'

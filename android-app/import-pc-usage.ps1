@@ -10,6 +10,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Compatibility parameter only: Claude now signs in through its official website.
+# Never read or transfer Claude credentials, even if -SkipClaude:$false was passed.
+$SkipClaude = $true
 $stage = 'setup'
 $claudeBytes = $null
 $codexBytes = $null
