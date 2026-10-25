@@ -7,6 +7,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+Set-Location -LiteralPath (Split-Path -Parent $PSScriptRoot)
 
 function Invoke-Git {
     param([Parameter(Mandatory = $true)][string[]]$Arguments)
@@ -40,7 +41,7 @@ Git 커밋 사용자 정보가 없습니다.
   git config --global user.email "you@example.com"
 
 또는 이번 실행에만 전달하세요:
-  .\git_push.ps1 -UserName "Your Name" -UserEmail "you@example.com"
+  .\scripts\git_push.ps1 -UserName "Your Name" -UserEmail "you@example.com"
 "@
 }
 

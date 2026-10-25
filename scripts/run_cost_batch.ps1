@@ -1,7 +1,11 @@
-$ErrorActionPreference = 'Continue'
+$ErrorActionPreference = 'Stop'
 
-$batchRoot = 'F:\sandbox\ai-monitor'
-$python = 'C:\Users\JJ\AppData\Local\Python\pythoncore-3.14-64\python.exe'
+$batchRoot = Split-Path -Parent $PSScriptRoot
+$pythonCommand = Get-Command python.exe -CommandType Application -ErrorAction Stop |
+    Where-Object { $_.Source -notlike '*\WindowsApps\*' } |
+    Select-Object -First 1
+if (-not $pythonCommand) { throw 'Python 실행 파일을 찾지 못했습니다. Python을 설치하고 PATH를 확인하세요.' }
+$python = $pythonCommand.Source
 $logRoot = Join-Path $batchRoot 'logs'
 $logFile = Join-Path $logRoot ("cost-batch-{0}.log" -f (Get-Date -Format 'yyyy-MM-dd'))
 
@@ -17,10 +21,12 @@ $env:https_proxy = ''
 $env:all_proxy = ''
 $env:NO_PROXY = 'localhost,127.0.0.1,::1'
 $env:PYTHONIOENCODING = 'utf-8'
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
 
 Push-Location $batchRoot
 try {
-    $output = & $python '.\cost_batch.py' '--days' '7' 2>&1
+    $output = & $python '-m' 'monitors.cost_batch' '--days' '7' 2>&1
     $exitCode = $LASTEXITCODE
     $output | Out-File -FilePath $logFile -Append -Encoding utf8
     exit $exitCode

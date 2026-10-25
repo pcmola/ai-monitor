@@ -1,4 +1,4 @@
-"""로컬 웹 화면용 HTTP 서버와 크롬 열기 (ai-master 의 common/server.py 와 같은 규칙).
+"""로컬 웹 화면용 HTTP 서버와 크롬 열기 (ai-master의 common/server.py와 같은 구조).
 
 서버 이름 주소는 hosts 파일에 적힌 IP 로 정한다. hosts 는 포트를 정할 수 없으므로
 포트 없는 주소를 쓰려면 서버마다 다른 루프백 IP 의 80 포트에 띄운다.
@@ -45,7 +45,7 @@ def site_url(name: str | None, port: int) -> tuple[str, int, str]:
         loopback = ip is not None and ipaddress.ip_address(ip).is_loopback and ip != "127.0.0.1"
     except ValueError:
         loopback = False
-    if loopback:
+    if loopback and ip is not None:
         return ip, 80, f"http://{name}"
     if ip == "127.0.0.1":
         return "127.0.0.1", port, f"http://{name}:{port}"

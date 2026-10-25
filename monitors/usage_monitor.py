@@ -16,9 +16,9 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse
 
-from webserver import favicon, local_server, open_chrome
-from tavily_usage import usage as tavily_usage
-from elevenlabs_usage import usage as elevenlabs_usage
+from common.server import favicon, local_server, open_chrome
+from providers.tavily_usage import usage as tavily_usage
+from providers.elevenlabs_usage import usage as elevenlabs_usage
 
 HOME = Path.home()
 CODEX_SESSIONS = HOME / ".codex" / "sessions"
@@ -37,7 +37,6 @@ CLAUDE_LABELS = {
     "seven_day_oauth_apps": "주간 (OAuth 앱)",
 }
 
-_talentlab_cache: dict = {"at": 0.0, "value": None}
 _claude_cache: dict = {"at": 0.0, "value": None}
 
 
@@ -177,93 +176,6 @@ def codex_usage(now: float) -> dict:
     return result
 
 
-# ---------------------------------------------------------------- AI Talent Lab / Azure OpenAI gateway
-
-def talentlab_usage() -> dict:
-    """Read a gateway-provided quota endpoint when one is explicitly configured.
-
-    Azure OpenAI-compatible inference endpoints do not expose account quota through
-    the normal chat/embedding API.  The monitor therefore never guesses a private
-    route or sends a billable inference request.  Set TALENTLAB_USAGE_URL when the
-    service owner provides a read-only usage endpoint.
-    """
-    now = time.time()
-    if _talentlab_cache["value"] and now - _talentlab_cache["at"] < API_CACHE_SECONDS:
-        return _talentlab_cache["value"]
-
-    result = {
-        "endpoint": TALENTLAB_ENDPOINT or None,
-        "usage_url": TALENTLAB_USAGE_URL or None,
-        "limits": [],
-        "raw": None,
-        "error": None,
-    }
-    if not TALENTLAB_ENDPOINT:
-        result["error"] = "AZURE_OPENAI_ENDPOINT가 설정되지 않았습니다."
-    elif not TALENTLAB_USAGE_URL:
-        result["error"] = (
-            "Azure OpenAI 호환 API에는 표준 잔여량 조회가 없습니다. "
-            "서비스 관리자에게 읽기 전용 사용량 URL을 받아 TALENTLAB_USAGE_URL로 설정하세요."
-        )
-    else:
-        parsed = urlparse(TALENTLAB_USAGE_URL)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            result["error"] = "TALENTLAB_USAGE_URL은 http(s) URL이어야 합니다."
-        else:
-            try:
-                headers = {"Accept": "application/json"}
-                if TALENTLAB_USAGE_TOKEN:
-                    headers[TALENTLAB_USAGE_AUTH_HEADER or "api-key"] = TALENTLAB_USAGE_TOKEN
-                req = urllib.request.Request(TALENTLAB_USAGE_URL, headers=headers)
-                with urllib.request.urlopen(req, timeout=10) as response:
-                    payload = json.loads(response.read().decode("utf-8"))
-                result["raw"] = payload if isinstance(payload, dict) else {"value": payload}
-                result["limits"] = normalize_talentlab_limits(payload)
-                if not result["limits"]:
-                    result["error"] = "응답에서 잔여량 필드를 찾지 못했습니다."
-            except urllib.error.HTTPError as exc:
-                result["error"] = f"사용량 API 오류: HTTP {exc.code}"
-            except (urllib.error.URLError, TimeoutError) as exc:
-                result["error"] = f"사용량 API 연결 실패: {exc.reason if hasattr(exc, 'reason') else exc}"
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                result["error"] = "사용량 API가 JSON 응답을 반환하지 않았습니다."
-            except Exception as exc:
-                result["error"] = f"사용량 조회 실패: {exc}"
-    _talentlab_cache.update(at=now, value=result)
-    return result
-
-
-def normalize_talentlab_limits(payload) -> list[dict]:
-    """Normalize common quota response shapes into the dashboard shape."""
-    if not isinstance(payload, dict):
-        return []
-    rows = payload.get("limits") or payload.get("quotas") or payload.get("usage")
-    if isinstance(rows, dict):
-        rows = [{"id": key, **value} for key, value in rows.items() if isinstance(value, dict)]
-    if not isinstance(rows, list):
-        rows = [payload]
-    result = []
-    for index, row in enumerate(rows):
-        if not isinstance(row, dict):
-            continue
-        used = row.get("used_percent", row.get("utilization"))
-        remaining = row.get("remaining_percent", row.get("remaining_percentage"))
-        if used is None and remaining is not None:
-            used = 100 - float(remaining)
-        if used is None:
-            continue
-        try:
-            used = max(0.0, min(100.0, float(used)))
-        except (TypeError, ValueError):
-            continue
-        result.append({
-            "id": str(row.get("id") or row.get("name") or f"quota-{index}"),
-            "label": str(row.get("label") or row.get("name") or f"Talent Lab 한도 {index + 1}"),
-            "used": used,
-            "resets_at": row.get("resets_at") or row.get("reset_at"),
-            "note": row.get("note"),
-        })
-    return result
 
 
 def collect() -> dict:
@@ -339,7 +251,7 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
-    def log_message(self, *_):
+    def log_message(self, format: str, *args):
         pass
 
 

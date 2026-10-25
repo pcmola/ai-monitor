@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 from urllib.error import HTTPError, URLError
 
-import elevenlabs_usage as eleven
+from providers import elevenlabs_usage as eleven
 
 
 def payload(used=595, limit=10000):

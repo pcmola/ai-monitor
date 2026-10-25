@@ -7,12 +7,11 @@ import os
 import threading
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 USAGE_URL = "https://api.tavily.com/usage"
-ENV_PATH = Path(__file__).with_name(".env")
+from common.paths import ENV_PATH
 CACHE_SECONDS = 60
 _cache = {}
 _lock = threading.Lock()

@@ -166,7 +166,7 @@ python .\android-app\export-codex-usage.py
 
 ## 구현 근거와 검사
 
-- PC 기준 구현: [usage_monitor.py](../usage_monitor.py)의 `claude_limits`, `codex_usage` (Codex 기록 해석). 모바일 현재 한도 직접 조회: [CodexUsageClient.java](app/src/main/java/local/aimonitor/CodexUsageClient.java).
+- PC 기준 구현: [usage_monitor.py](../monitors/usage_monitor.py)의 `claude_limits`, `codex_usage` (Codex 기록 해석). 모바일 현재 한도 직접 조회: [CodexUsageClient.java](app/src/main/java/local/aimonitor/CodexUsageClient.java).
 - [OpenAI 공식 인증 문서](https://learn.chatgpt.com/docs/auth): 구독 인증과 API 키 인증의 구분, 인증 파일 보호
 - [OpenAI App Server 문서](https://learn.chatgpt.com/docs/app-server): Codex 런타임의 계정·사용 한도 인터페이스. 위 내부 HTTPS 주소에 대한 공개 API 보장을 의미하지 않으며, 본 앱에서 PC 서버를 띄우지도 않습니다.
 

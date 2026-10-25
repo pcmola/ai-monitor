@@ -1,4 +1,4 @@
-"""실행 중인 비용 모니터 검사. Playwright와 Chrome 필요, Azure 호출은 차단한다."""
+"""python -m tests.test_cost_web: 실행 중인 비용 모니터 검사 (Playwright 필요)."""
 import json
 from datetime import date, timedelta
 from urllib.parse import parse_qs, urlparse

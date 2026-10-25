@@ -6,8 +6,8 @@
 - Cost Management API 는 호출 빈도 제한이 있어 같은 조회는 5분간 캐시한다.
 
 사용 예:
-    python cost_monitor.py                    # http://cost-monitor.local (hosts 등록 시), 없으면 http://127.0.0.1:8769
-    python cost_monitor.py --subscription wonjy
+    python -m monitors.cost_monitor           # http://cost-monitor.local
+    python -m monitors.cost_monitor --subscription wonjy
 """
 
 from __future__ import annotations
@@ -27,13 +27,14 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 
-from webserver import favicon, local_server, open_chrome
+from common.server import favicon, local_server, open_chrome
+from common.paths import DATA_DIR
 
 API = "https://management.azure.com/subscriptions/{sub}/providers/Microsoft.CostManagement/query?api-version=2023-11-01"
 CACHE_SECONDS = 300
 GROUPS = {"rg": "ResourceGroupName", "service": "ServiceName", "resource": "ResourceId"}
 MAX_QUERY_DAYS = {group: 31 for group in GROUPS}
-DB_PATH = Path(__file__).with_name("cost_monitor.db")
+DB_PATH = DATA_DIR / "cost_monitor.db"
 PUBLIC_HOST = "cost-monitor.local"
 
 SUBSCRIPTION: dict = {}
@@ -107,6 +108,7 @@ def azure_fetch(start: date, end: date, group: str, range_key: str = "custom") -
             "timePeriod": {"from": f"{start}T00:00:00Z", "to": f"{end}T23:59:59Z"},
             "dataset": {"granularity": "Daily", "aggregation": {"totalCost": {"name": "Cost", "function": "Sum"}},
                         "grouping": [{"type": "Dimension", "name": GROUPS[group]}]}}
+    props = None
     for attempt in range(3):
         req = Request(API.format(sub=SUBSCRIPTION["id"]), data=json.dumps(body).encode(), method="POST",
                       headers={"Authorization": f"Bearer {access_token()}", "Content-Type": "application/json"})
@@ -130,6 +132,8 @@ def azure_fetch(start: date, end: date, group: str, range_key: str = "custom") -
             raise RuntimeError(f"Cost Management 오류 HTTP {exc.code}: {detail}")
         except URLError as exc:
             raise RuntimeError(f"연결 실패: {exc.reason}")
+    if props is None:
+        raise RuntimeError("Azure 비용 응답을 받지 못했습니다.")
     cols = [c["name"] for c in props["columns"]]
     rows = []
     for r in props["rows"]:
@@ -149,6 +153,7 @@ def azure_fetch(start: date, end: date, group: str, range_key: str = "custom") -
 
 
 def init_db(path: Path = DB_PATH):
+    path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(path) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS daily_cost (
@@ -389,7 +394,7 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
-    def log_message(self, *_):
+    def log_message(self, format: str, *args):
         pass
 
 

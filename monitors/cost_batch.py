@@ -1,7 +1,7 @@
 """Fetch recent Azure costs into the local SQLite database.
 
 Run once a day from Windows Task Scheduler:
-    python cost_batch.py
+    python -m monitors.cost_batch
 
 The default refreshes the latest 7 days because Azure Cost Management data can
 arrive late. Existing rows are updated with UPSERT, so rerunning is safe.
@@ -13,7 +13,7 @@ import argparse
 import sqlite3
 from datetime import date, datetime, timedelta
 
-import cost_monitor
+from monitors import cost_monitor
 
 
 def store(result: dict, group: str, subscription_id: str):

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener
 
-from tavily_usage import _NoRedirect, _number, read_api_key
+from providers.tavily_usage import _NoRedirect, _number, read_api_key
 
 USAGE_URL = "https://api.elevenlabs.io/v1/user/subscription"
 CACHE_SECONDS = 60

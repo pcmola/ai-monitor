@@ -1,0 +1,9 @@
+{
+  "files.exclude": {
+    "**/__pycache__": true,
+    ".azure": true,
+    ".azure-cli": true,
+    ".vscode-data": true,
+    ".vscode-extensions": true
+  }
+}

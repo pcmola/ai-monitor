@@ -1,7 +1,7 @@
 """Tavily 카드 표시 검사. API 응답을 대체하며 실제 검색·사용량 호출은 하지 않는다."""
 from playwright.sync_api import expect, sync_playwright
-from tavily_usage import normalize
-from elevenlabs_usage import normalize as normalize_eleven
+from providers.tavily_usage import normalize
+from providers.elevenlabs_usage import normalize as normalize_eleven
 
 
 def main():

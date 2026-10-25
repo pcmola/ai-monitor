@@ -8,8 +8,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
-import cost_batch
-import cost_monitor as monitor
+from monitors import cost_batch
+from monitors import cost_monitor as monitor
 
 
 class CostPeriodTests(unittest.TestCase):

@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
-import tavily_usage as tavily
+from providers import tavily_usage as tavily
 
 
 def payload(used=28, limit=1000):

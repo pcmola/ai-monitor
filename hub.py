@@ -8,8 +8,8 @@
 - 서버는 창 없이 띄우고 출력은 logs/<key>.log 에 남긴다. 허브를 꺼도 서버는 계속 돈다.
 - 실행 여부는 프로세스 명령줄의 스크립트 이름으로 찾는다. 허브 밖에서 직접 띄운 서버도 보이고 끌 수 있다.
 - 콘솔에는 시각과 함께 시작 설정, 요청, 생성·종료한 PID, 상태 변화(허브 밖에서 끄거나 죽은 경우 포함), 오류를 남긴다.
-- 서버 주소 규칙(hosts 의 IP 에 따라 포트 없는 주소)은 webserver.py 설명 참고.
-- ai-master 의 hub.py 와 같은 코드다. 고칠 때는 위쪽 설정(HUB_*, SERVERS, import)만 다르게 유지한다.
+- 서버 주소 규칙(hosts의 IP에 따른 주소)은 common/server.py 설명 참고.
+- ai-master 허브 구조를 바탕으로 하며, 이 프로젝트의 monitors 패키지를 모듈로 실행한다.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from webserver import favicon, local_server, open_chrome, site_url
+from common.server import favicon, local_server, open_chrome, site_url
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 HUB_PORT, HUB_SITE, HUB_TITLE = 8770, "ai-monitor.local", "AI 모니터 허브"
@@ -35,9 +35,9 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 DETACH = NO_WINDOW | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
 SERVERS = [s for s in [
-    {"key": "usage-monitor", "title": "사용량 모니터", "dir": PROJECT_ROOT, "script": "usage_monitor.py",
+    {"key": "usage-monitor", "title": "사용량 모니터", "dir": PROJECT_ROOT, "script": "monitors/usage_monitor.py", "module": "monitors.usage_monitor",
      "port": 8767, "site": "usage-monitor.local"},
-    {"key": "cost-monitor", "title": "비용 모니터", "dir": PROJECT_ROOT, "script": "cost_monitor.py",
+    {"key": "cost-monitor", "title": "비용 모니터", "dir": PROJECT_ROOT, "script": "monitors/cost_monitor.py", "module": "monitors.cost_monitor",
      "port": 8769, "site": "cost-monitor.local"},
 ] if (s["dir"] / s["script"]).is_file()]
 BY_KEY = {s["key"]: s for s in SERVERS}
@@ -108,7 +108,7 @@ def server_status(force: bool = False) -> list[dict]:
         result = []
         for s in SERVERS:
             script = Path(s["script"]).name.lower()
-            matched = {p["pid"]: p for p in procs if script in p["cmd"].lower()}
+            matched = {p["pid"]: p for p in procs if script in p["cmd"].lower() or s["module"] in p["cmd"].lower()}
             children: dict[int, list[int]] = {}
             for p in matched.values():
                 children.setdefault(p["ppid"], []).append(p["pid"])
@@ -151,7 +151,7 @@ def start(s: dict):
             out_file.replace(out_file.with_suffix(".old.log"))
         except OSError:
             pass  # 다른 프로세스가 쓰고 있으면 그대로 이어 쓴다
-    cmd = [sys.executable, s["script"], "--no-browser"]
+    cmd = [sys.executable, "-m", s["module"], "--no-browser"]
     env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
     with open(out_file, "ab") as f:
         f.write(f"\n===== {datetime.now():%Y-%m-%d %H:%M:%S} 시작: {' '.join(cmd)} =====\n".encode("utf-8"))
@@ -173,6 +173,7 @@ def stop(key: str):
         out = " / ".join(line.strip() for line in res.stdout.decode("cp949", errors="replace").splitlines() if line.strip())
         log(f"[{key}] taskkill PID {inst['pid']} (트리 {inst['pids']}) → 종료 코드 {res.returncode} {out}")
     began, deadline = time.monotonic(), time.monotonic() + 10
+    now = current
     while time.monotonic() < deadline:
         now = next(x for x in server_status(force=True) if x["key"] == key)
         if not now["instances"]:
@@ -321,7 +322,7 @@ class Handler(BaseHTTPRequestHandler):
         log(f"요청 {client}: {action} {key} → 처리 {', '.join(accepted) or '없음'}")
         self.send_json({"accepted": accepted})
 
-    def log_message(self, *_):
+    def log_message(self, format: str, *args):
         pass
 
 

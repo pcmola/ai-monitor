@@ -7,6 +7,7 @@
 .azure/
 .azure-cli/
 *.db
+data/
 
 # Runtime logs and caches
 logs/

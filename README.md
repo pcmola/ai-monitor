@@ -1,145 +1,217 @@
 # AI Monitor
 
-PC용 로컬 대시보드와 독립형 Android 앱을 함께 관리하는 프로젝트입니다. PC 대시보드는 ai-master(`F:\sandbox\ai-master`)에서 분리했습니다.
+Claude·Codex 구독 한도, Tavily·ElevenLabs 크레딧과 Azure 비용을 확인하는 로컬 모니터입니다. PC 대시보드와 별도 Android 앱(Code Spend)을 함께 관리합니다.
 
-- **PC 모니터**: AI 사용량·한도와 Azure 비용을 조회합니다. Python 허브로 실행합니다.
-- **Android 앱 — Code Spend**: Claude Code·Codex의 구독 사용량·한도를 표시합니다. Azure/API 청구 비용은 조회하지 않으며, PC 서버나 LAN 연결 없이 실행합니다.
+- **PC**: 허브에서 사용량·비용 모니터를 실행하고 관리합니다.
+- **Android**: PC 서버 없이 동작합니다. 현재 Claude는 공식 웹에서 사용량을 확인하고, Codex는 인증 파일을 가져와 앱 카드에서 조회합니다. 모바일 자체 로그인·토큰 자동 갱신은 구현되어 있지 않습니다.
 
-## Android 앱 빠른 시작
+## 빠른 시작 — PC
 
-현재 버전은 **Code Spend 4.5**입니다. Claude는 공식 웹페이지에서 로그인하고 사용량을 확인하며, Codex는 앱 카드에서 현재 한도를 조회합니다. 구독 사용률을 금액으로 환산하거나 Azure/API 비용을 조회하지 않습니다.
-
-아래 명령은 프로젝트 루트에서 실행합니다. `F:\sandbox\ai-monitor`는 이 PC의 경로이므로 다른 PC에서는 실제 저장소 위치로 바꾸세요.
-
-### 내 스마트폰에 설치
-
-이 PC에서 만든 APK 위치는 `F:\sandbox\ai-monitor\android-app\CodeSpend.apk`입니다. 채팅의 로컬 파일 링크가 열리지 않으면 PowerShell에서 다음 명령으로 파일 위치를 엽니다.
-
-```powershell
-explorer.exe /select,"F:\sandbox\ai-monitor\android-app\CodeSpend.apk"
-```
-
-APK를 USB로 휴대폰의 **Download 폴더에 복사 → 휴대폰 파일 관리자에서 APK 선택 → 설치**합니다. 필요한 경우 해당 파일 관리자에만 출처를 알 수 없는 앱 설치를 허용하세요. Windows에서는 APK를 직접 실행할 수 없습니다.
-
-같은 PC의 서명으로 만든 이전 버전을 사용 중이라면 기존 앱을 삭제하지 않고 4.5 APK를 덮어 설치하세요. 화면 간격과 버튼 배치를 줄였습니다. Claude의 이전 인증·사용량 자료는 더 이상 조회에 쓰지 않으며 `⋮` 메뉴에서 직접 삭제할 수 있습니다. Codex 자료는 유지합니다.
-
-APK는 개인 설치용 디버그 서명이며 Android 8.0 이상을 지원합니다. **APK는 Git에 포함되지 않습니다.** 다른 PC에서 저장소를 받았다면 JDK 17·Android SDK 35를 준비하고 다음 명령으로 빌드합니다.
-
-```powershell
-.\android-app\build-apk.ps1
-```
-
-### PC에서 에뮬레이터 실행
-
-이 PC에 설치된 에뮬레이터를 실행하려면 VS Code의 PowerShell 터미널에서 다음을 입력합니다.
+Windows PowerShell에서 저장소 루트로 이동합니다. Python 3.10 이상이 필요하며, PC 서버 자체는 Python 표준 라이브러리만 사용합니다.
 
 ```powershell
 cd F:\sandbox\ai-monitor
-.\android-app\run-emulator.ps1
+# 기존 .env는 덮어쓰지 않습니다.
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+# 필요한 항목을 .env에 입력한 뒤 실행합니다.
+python hub.py --start-all
 ```
 
-Android 가상 휴대폰을 열고 APK를 설치한 뒤 Code Spend 앱까지 자동 실행합니다. 이미 실행 중인 프로젝트 에뮬레이터가 있으면 재사용합니다.
+새 저장소에는 인증 정보와 비용 DB가 없습니다. 아래 설정을 완료해야 각 서비스의 실제 수치가 표시됩니다.
 
-소스를 수정한 뒤 다시 빌드·설치·실행하려면:
+| 기능 | 준비할 항목 |
+|---|---|
+| Claude 사용량 | 이 PC의 Claude Code 로그인 정보 `~/.claude/.credentials.json` |
+| Codex 한도 | 이 PC의 `~/.codex/sessions`에 기록된 한도 정보 |
+| Tavily 크레딧 | 루트 `.env`의 `TAVILY_API_KEY` |
+| ElevenLabs 크레딧 | 루트 `.env`의 `ELEVENLABS_API_KEY`, 구독 조회에 필요한 `user_read` 권한 |
+| Azure 비용 | Azure CLI 설치·`az login`, 대상 구독의 Cost Management Reader 이상 권한 |
+
+비용 DB를 처음 채우려면 다음 명령을 실행합니다. Azure 조회 결과는 `data/cost_monitor.db`에 저장됩니다.
 
 ```powershell
-.\android-app\run-emulator.ps1 -Rebuild
+az login
+python -m monitors.cost_batch
 ```
 
-실행 중인 앱의 기본 UI를 자동 검사하려면:
+### 화면 주소
 
-```powershell
-.\android-app\test-emulator.ps1
-```
-
-### 인증 연결과 갱신
-
-**Claude 로그인 · 사용량 보기**를 눌러 휴대폰 브라우저의 공식 페이지에서 로그인하세요. PC 인증 파일은 필요 없습니다. 로그인은 브라우저가 유지하며 만료·로그아웃·브라우저 자료 삭제 시 다시 로그인합니다. 웹 수치는 앱 카드에 자동 연동되지 않습니다.
-
-**Codex 인증 가져오기**로 `.codex/auth.json`을 가져오면 앱 화면이 열려 있는 동안 1분마다 조회합니다. 인증 만료 시에는 다시 가져와야 하며 로그인 토큰 자동 갱신은 하지 않습니다. PC 서버나 반복적인 기록 추출은 필요 없습니다. 아래 에뮬레이터 도구는 Codex 인증만 전달하며 Claude 인증은 읽거나 전달하지 않습니다.
-
-갱신 주기는 앱이 활성화된 포그라운드 상태 기준입니다. 화면을 잠그거나 다른 앱으로 전환하면 주기 조회를 일시 중지합니다.
-
-```powershell
-.\android-app\import-pc-usage.ps1
-```
-
-기존 PC 파일은 변경하지 않습니다. Codex 내부 사용량 주소는 공개적으로 보장된 모바일 API가 아니므로 변경·접근 제한 가능성이 있습니다. Codex 구독의 현재 한도와 예전에 가져온 로컬 토큰 합계는 다른 자료입니다.
-
-Codex 인증 파일은 USB 등으로 전달한 뒤 앱에서 가져오고 공유 폴더의 복사본은 직접 삭제하세요. `.env`의 API 키로 구독 인증을 대신할 수 없습니다. Claude 웹 로그인에는 파일 전달이 필요 없습니다. PC 대시보드의 인증·조회 방식은 변경하지 않았습니다.
-
-에뮬레이터 도구는 이 PC에 설치되어 있지만 Git에는 포함되지 않습니다. 다른 PC의 준비 사항과 로그인·빌드·오류 해결 방법은 [Android 앱 README](android-app/README.md)를 참고하세요.
-
-2026-10-24 기준: Java 단위 테스트 129개, Codex 기록 추출기 테스트 22개 통과, Android Lint 오류 없음. API 35 에뮬레이터에서 인증 입력·파일 선택 UI와 Codex 직접 조회·자동 갱신을 확인했습니다. 모든 실제 휴대폰에서의 동작을 검증한 것은 아닙니다.
-
-## PC 모니터 구성
-
-| 파일 | 용도 | 주소 (hosts 미등록 시) |
+| 화면 | hosts 등록 시 | hosts 미등록 시 |
 |---|---|---|
-| `hub.py` | 모니터 허브: 한 화면에서 시작·중지·재시작, 로그 보기 | http://ai-monitor.local (8770) |
-| `usage_monitor.py` | ChatGPT/Codex·Claude 토큰 사용량과 한도 | http://usage-monitor.local (8767) |
-| `cost_monitor.py` | Azure 일별 비용 (Cost Management, 읽기 전용) | http://cost-monitor.local (8769) |
-| `cost_batch.py` | 최근 비용을 `cost_monitor.db`에 모아 두는 배치 (작업 스케줄러용) | - |
-| `webserver.py` | 공통: hosts 기준 주소로 서버 띄우기, 크롬 열기 | - |
+| 모니터 허브 | http://ai-monitor.local | http://127.0.0.1:8770 |
+| 사용량 모니터 | http://usage-monitor.local | http://127.0.0.1:8767 |
+| Azure 비용 모니터 | http://cost-monitor.local | http://127.0.0.1:8769 |
 
-## PC 모니터 준비
+포트 없는 주소를 쓰려면 관리자 권한으로 `C:\Windows\System32\drivers\etc\hosts`에 아래 내용을 추가하고 `ipconfig /flushdns`를 실행합니다.
 
-- Python 3.10 이상. 외부 패키지는 쓰지 않습니다.
-- 비용 모니터는 az CLI 로그인을 씁니다(`az login`). 구독에 Cost Management Reader 이상 권한이 필요합니다.
-- 사용량 모니터는 `~/.codex/sessions` 기록과 `~/.claude/.credentials.json`을 읽습니다.
-
-## 포트 없는 주소 (hosts)
-
-hosts 파일은 포트를 정할 수 없으므로 서버마다 다른 루프백 IP의 80 포트를 씁니다. 서버는 시작할 때 hosts를 읽어 자기 이름에 적힌 IP로 뜹니다(`webserver.py`).
-
-| hosts에 적힌 값 | 서버가 뜨는 곳 | 주소 |
-|---|---|---|
-| 없음 | 127.0.0.1:포트 | `http://127.0.0.1:8769` |
-| `127.0.0.1 cost-monitor.local` | 127.0.0.1:포트 | `http://cost-monitor.local:8769` |
-| `127.0.87.69 cost-monitor.local` | 127.0.87.69:80 | `http://cost-monitor.local` |
-
-관리자 PowerShell에서 `C:\Windows\System32\drivers\etc\hosts`에 아래를 추가하고 `ipconfig /flushdns`를 실행합니다.
-
-```
+```text
 127.0.87.67 usage-monitor.local
 127.0.87.69 cost-monitor.local
 127.0.87.70 ai-monitor.local
 ```
 
-127.0.87.64~66·68은 ai-master의 서버들이 씁니다.
+서버는 이 hosts 매핑을 읽어 각각의 루프백 IP·80 포트에서 실행됩니다. 매핑이 없으면 위의 기본 포트를 사용합니다. `127.0.0.1`로 이름만 매핑한 경우에도 기본 포트가 필요합니다. 기본 구성은 PC 내부 접속용이며 LAN 공개가 필요하지 않습니다.
 
-## PC 모니터 실행
+## 실제 화면
 
-### 허브로 실행 (권장)
+2026-10-25 실행 중인 서버를 Chrome으로 캡처한 화면입니다. 테스트용 가짜 데이터가 아니며, 사용량·비용·기준 시각은 캡처 시점의 값입니다.
 
-```powershell
-cd F:\sandbox\ai-monitor
-python hub.py                # 허브를 켜고 크롬으로 연다
-python hub.py --start-all    # 꺼져 있는 모니터를 모두 시작
-python hub.py --restart-all  # 모두 다시 시작 (중복 실행·예전 주소로 뜬 서버 정리)
-python hub.py --no-browser   # 크롬을 열지 않음 (다른 옵션과 함께 사용)
+### 모니터 허브
+
+서버 상태·PID를 확인하고 시작·중지·재시작, 로그 및 화면 보기를 수행합니다.
+
+![AI 모니터 허브: 사용량·비용 서버 상태와 관리 버튼](docs/images/hub.png)
+
+### 사용량 모니터
+
+Claude, ChatGPT/Codex, Tavily, ElevenLabs 네 카드를 한 화면에 표시합니다. 로컬 기록 기준 토큰 사용량 표는 표시하지 않습니다.
+
+![사용량 모니터: 네 서비스의 남은 한도와 크레딧](docs/images/usage.png)
+
+- 막대 길이는 **잔여량**입니다. 93% 남았으면 막대도 93% 채웁니다.
+- 색상은 기존 **사용률** 기준입니다: 70% 미만 초록, 70% 이상·90% 미만 주황, 90% 이상 빨강.
+- 화면 자동 갱신은 기본 60분이며, 선택 상자에서 변경하거나 수동 새로고침할 수 있습니다.
+- Tavily·ElevenLabs API 결과는 최대 1분 간격으로 조회합니다. 이는 캐시 간격이며 화면을 매분 자동 갱신한다는 뜻은 아닙니다.
+- PC의 Codex 한도는 세션에 마지막으로 기록된 값입니다. 화면 새로고침만으로 서비스의 실시간 한도를 직접 조회하지는 않습니다.
+- PC의 Claude 인증 토큰도 모니터가 자체 갱신하지 않습니다. 만료 시 Claude Code를 실행해 갱신한 뒤 다시 조회합니다.
+
+### Azure 비용 모니터
+
+로컬 DB와 Azure API 조회를 전환하고 리소스 그룹·서비스·리소스별로 비용을 확인합니다.
+
+![Azure 비용 모니터: 기간 합계, 일별 그래프와 항목별 합계](docs/images/cost.png)
+
+- **로컬 DB**: 조회 기간 제한 없음. 실제로 수집된 날짜 범위까지만 표시합니다.
+- **Azure API**: 시작일·종료일을 모두 포함해 최대 **31일**. 화면과 서버 모두 검사합니다.
+- 일별 상세 표는 날짜·합계·항목·비용의 네 컬럼입니다.
+- Azure 반영 지연이나 당일 부분 집계 때문에 최근 날짜의 비용은 재수집하면 바뀔 수 있습니다.
+
+## 구조와 데이터 흐름
+
+허브는 두 서버의 프로세스를 관리합니다. 사용량·비용 데이터는 각 모니터가 직접 조회합니다.
+
+```mermaid
+flowchart TD
+    Browser["PC 브라우저"] --> Hub["hub.py · 프로세스 관리"]
+    Hub -->|실행·중지·재시작| Usage["monitors.usage_monitor"]
+    Hub -->|실행·중지·재시작| Cost["monitors.cost_monitor"]
+    Usage --> Claude["Claude 로그인 정보 · 사용량 API"]
+    Usage --> Codex["Codex 로컬 세션 기록"]
+    Usage --> Providers["providers · Tavily / ElevenLabs API"]
+    Env["루트 .env · Git 제외"] -.-> Providers
+    Cost -->|로컬 DB 조회| DB[("data/cost_monitor.db")]
+    Cost -->|최대 31일 직접 조회| Azure["Azure Cost Management"]
+    Scheduler["Windows 작업 스케줄러 · 매일 09:05"] --> Runner["scripts/run_cost_batch.ps1"]
+    Runner --> Batch["monitors.cost_batch · 최근 7일 재수집"]
+    Batch --> Azure
+    Batch -->|저장| DB
 ```
 
-- 모니터는 창 없이 뜨고 출력은 `logs/<서버>.log`에 남습니다. 허브를 꺼도(Ctrl+C) 모니터는 계속 돕니다.
-- 허브 콘솔에는 시각과 함께 시작 설정, 시작·중지 요청, 생성·종료한 PID, 상태 변화, 오류가 찍힙니다.
-- 허브 코드는 ai-master의 `hub.py`와 같고 위쪽 설정(이름, 서버 목록, import)만 다릅니다.
+### 폴더 구조
 
-허브가 이미 떠 있으면 브라우저로 http://ai-monitor.local 을 열면 됩니다. 끄려면 다음을 실행합니다.
-
-```powershell
-Get-NetTCPConnection -LocalAddress 127.0.87.70 -LocalPort 80 -State Listen | ForEach-Object { taskkill /PID $_.OwningProcess /T /F }
+```text
+ai-monitor/
+├── hub.py                    # PC 허브 진입점
+├── monitors/                 # 사용량·비용 서버와 비용 수집 배치
+├── common/                   # 공통 웹서버·파비콘·프로젝트 경로
+├── providers/                # Tavily·ElevenLabs 사용량 조회
+├── scripts/                  # 배치 실행·Git 업로드·화면 캡처
+├── tests/                    # 단위 테스트·브라우저 검증
+├── docs/images/              # README용 실제 화면 캡처
+├── android-app/              # Code Spend Android 소스·빌드·에뮬레이터 도구
+├── data/                     # 로컬 비용 DB (Git 제외)
+├── logs/                     # 실행 로그 (Git 제외)
+├── .env                      # 실제 설정·키 (Git 제외)
+└── .env.example              # 공개용 설정 양식
 ```
 
-### 직접 실행
+기존 루트의 `webserver.py`는 `common/server.py`로 옮겼습니다. 개별 모니터는 파일 경로 대신 **저장소 루트에서 모듈로 실행**합니다. `.env`는 루트 한 곳에서 읽습니다.
 
 ```powershell
-python usage_monitor.py                         # 기본 8767
-python cost_monitor.py --subscription wonjy     # 기본 8769, 구독 생략 시 az 현재 구독
-python cost_batch.py                            # 최근 7일 비용 수집
+python hub.py --start-all
+python hub.py --restart-all
+python hub.py --no-browser
+# 각각 직접 실행할 때:
+python -m monitors.usage_monitor
+python -m monitors.cost_monitor
+python -m monitors.cost_batch --days 7
 ```
 
-## Git에 올리지 않는 것
+허브에서 실행한 모니터의 출력은 `logs/`에 저장됩니다. 허브 콘솔을 닫아도 별도로 실행된 모니터는 계속 동작할 수 있으므로, 중지할 때는 허브의 관리 버튼을 사용합니다.
 
-`.env`, `.azure/`, `.azure-cli/`(Azure 로그인 정보), `cost_monitor.db`(비용 데이터), `logs/`, `*.log`, `.vscode-data/`, `.vscode-extensions/`는 `.gitignore`로 제외합니다.
+## 비용 배치 — 매일 09:05
 
-Android의 SDK·Gradle 도구(`android-app/.toolchain/`), 빌드 결과, APK, 에뮬레이터 로그·검사 자료(`android-app/.emulator/`), 가져오기 자료(`android-app/.local-import/`), 서명 키도 제외합니다. `.env.example`은 실제 값이 없는 공개용 템플릿입니다. 실제 `.env`와 Claude/Codex 인증 파일은 로컬에서만 관리하고 README나 소스에 넣지 않습니다. 앱은 필요한 인증 항목만 기기에 암호화해 저장합니다.
+현재 개발 PC에는 Windows 작업 **`AI-Monitor-CostBatch`**가 등록되어 있습니다. 매일 한국 시간 **09:05**에 최근 7일을 다시 수집해 지연 반영된 비용도 갱신합니다.
+
+- 실행 파일: `powershell.exe`
+- 인수: `-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "F:\sandbox\ai-monitor\scripts\run_cost_batch.ps1"`
+- 시작 위치: `F:\sandbox\ai-monitor`
+- 로그: `logs/cost-batch-YYYY-MM-DD.log`
+- 현재 등록은 해당 사용자 로그인 상태에서 실행합니다. PC가 꺼져 있으면 정시에 실행할 수 없으며, 놓친 예약은 실행 가능한 시점에 실행하도록 설정되어 있습니다.
+
+작업 스케줄러는 저장소에 포함되지 않습니다. **다른 PC에서는 별도 등록**하고 위 경로도 실제 저장소 위치로 바꿔야 합니다. 작업 만들기에서 일일 트리거 09:05, 위 동작, “예약된 시작 시간을 놓친 경우 가능한 대로 빨리 작업 시작”을 지정합니다. Azure CLI에 로그인한 사용자로 실행하세요.
+
+```powershell
+# 작업 스케줄러 화면 열기
+mmc.exe "$env:WINDIR\System32\taskschd.msc"
+# 등록 상태·최근 결과 확인
+Get-ScheduledTask -TaskName AI-Monitor-CostBatch
+Get-ScheduledTaskInfo -TaskName AI-Monitor-CostBatch
+# 지금 다시 실행
+Start-ScheduledTask -TaskName AI-Monitor-CostBatch
+# 예약과 관계없이 직접 실행
+.\scripts\run_cost_batch.ps1
+```
+
+`LastTaskResult`가 `0`이면 정상 종료입니다. 인증 오류 등 세부 원인은 해당 날짜 로그에서 확인합니다.
+
+## Android — Code Spend
+
+현재 소스는 **4.5**입니다. Android 8.0 이상에서 동작하며 PC 서버나 LAN 공개는 필요하지 않습니다. Azure/API 청구 비용을 조회하지 않으며, 구독 한도를 금액으로 환산하지 않습니다.
+
+| 서비스 | 현재 앱의 방식 |
+|---|---|
+| Claude Code | 휴대폰 브라우저에서 공식 사용량 페이지 로그인. 브라우저가 세션을 유지하며 앱 카드 수치와 자동 연동되지는 않음 |
+| Codex | `.codex/auth.json`을 한 번 가져온 뒤 앱 화면이 열린 동안 1분마다 한도 조회. 인증 만료 시 다시 가져오기 필요 |
+
+로그인 토큰 자동 갱신이나 모바일 자체 로그인은 아직 구현되지 않았습니다. 공식 페이지 로그인도 만료·로그아웃·브라우저 데이터 삭제 시 다시 해야 합니다.
+
+```powershell
+# APK 빌드 (JDK 17·Android SDK 35 필요)
+.\android-app\build-apk.ps1
+# 에뮬레이터 실행 및 앱 설치
+.\android-app\run-emulator.ps1
+# 수정 후 다시 빌드·설치
+.\android-app\run-emulator.ps1 -Rebuild
+# 에뮬레이터 UI 검증
+.\android-app\test-emulator.ps1
+```
+
+빌드된 `android-app/CodeSpend.apk`를 휴대폰 Download 폴더로 복사해 파일 관리자로 설치합니다. APK는 Git에 포함되지 않습니다. 빌드 도구 설치, 인증 가져오기와 문제 해결은 [Android README](android-app/README.md)를 참고하세요.
+
+## 검증과 화면 캡처
+
+브라우저 검증·캡처에는 Playwright와 설치된 Google Chrome이 필요합니다. 먼저 PC 서버를 실행합니다.
+
+```powershell
+python -m pip install -r tests/requirements.txt
+python -m unittest discover -s tests -v
+python -m tests.test_cost_web
+python -m tests.test_usage_web
+# 위 hosts 주소가 설정된 PC에서 실제 화면 다시 캡처:
+python -m scripts.capture_screenshots
+# 선택 사항: 정적 타입 검사 (Node.js·npx 필요)
+npx --yes pyright monitors providers common hub.py
+```
+
+캡처 스크립트는 화면의 로딩 완료를 기다린 뒤 `docs/images/`의 PNG 세 장을 갱신합니다. Git에 올리기 전 계정·리소스 이름 등 공개 범위도 확인하세요. 브라우저 테스트의 가짜 응답 기반 검증 화면과 README의 실제 캡처는 별개입니다.
+
+## 보안과 Git 업로드
+
+`.env`, 인증 파일, Azure 로그인 캐시, 비용 DB, 로그, APK·서명 키·Android SDK·에뮬레이터 자료는 Git에서 제외합니다. `.env.example`에는 실제 키·내부 엔드포인트가 아닌 자리표시자만 둡니다. 인증 파일과 API 키를 문서나 화면 캡처에 넣지 마세요.
+
+변경 내용을 확인한 뒤 다음 명령으로 업로드할 수 있습니다. 민감정보를 과거 커밋에 올렸다면 파일 삭제만으로 해결되지 않으며, 키 폐기·재발급과 별도 이력 정리가 필요합니다.
+
+```powershell
+.\scripts\git_push.ps1 -Message "변경 내용"
+```
