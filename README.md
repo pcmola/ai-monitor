@@ -55,6 +55,27 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 python hub.py --start-all
 ```
 
+### 2.0 Windows에서 VS Code 없이 실행
+
+VS Code를 열지 않고도 프로젝트 폴더의 `run-hub.bat`을 더블클릭해 허브를 실행할 수 있습니다.
+
+```powershell
+cd F:\sandbox\ai-monitor
+.\run-hub.bat
+```
+
+실행 옵션은 배치 파일 뒤에 그대로 전달됩니다.
+
+```powershell
+.\run-hub.bat --start-all
+.\run-hub.bat --restart-all
+.\run-hub.bat --no-browser
+```
+
+`hub.py`가 실행되면 기존 AI Monitor 서버 프로세스를 정리하고 허브를 시작합니다. Chrome은 AI Monitor 전용 프로필로 일반 Chrome 창을 열며, 다음 실행 시 이전 전용 창만 닫습니다. 기존 개인 Chrome 창과 탭은 건드리지 않습니다. 전용 프로필은 `%LOCALAPPDATA%\ai-monitor\chrome-profile`에 저장됩니다.
+
+앱 실행에는 Python 표준 라이브러리만 필요합니다. `tests/requirements.txt`의 `playwright`는 브라우저 테스트와 화면 캡처용 의존성입니다.
+
 새 저장소에는 인증 정보와 비용 DB가 없습니다. 아래 설정을 완료해야 각 서비스의 실제 수치가 표시됩니다.
 
 | 기능 | 준비할 항목 |

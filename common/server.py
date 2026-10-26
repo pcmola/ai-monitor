@@ -62,6 +62,28 @@ def local_server(port: int, handler, name: str | None = None) -> LocalServer:
     return server
 
 
+def _chrome_profile_dir() -> Path:
+    """Return the isolated Chrome profile used by the local monitor window."""
+    return Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ai-monitor" / "chrome-profile"
+
+
+def close_chrome():
+    """Close only Chrome processes launched with the monitor's isolated profile."""
+    profile = str(_chrome_profile_dir()).replace("'", "''")
+    command = (
+        "$profile = '" + profile + "'; "
+        "$procs = Get-CimInstance Win32_Process -Filter \"Name='chrome.exe'\" "
+        "| Where-Object { $_.CommandLine -and $_.CommandLine.Contains($profile) }; "
+        "$procs | ForEach-Object { taskkill /PID $_.ProcessId /T /F | Out-Null }"
+    )
+    subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
+        capture_output=True,
+        timeout=15,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+
+
 def open_chrome(url: str):
     """크롬으로 페이지를 연다. 크롬이 없으면 기본 브라우저를 쓴다."""
     candidates = [
@@ -71,7 +93,15 @@ def open_chrome(url: str):
     ]
     chrome = next((p for p in candidates if p.is_file()), None)
     if chrome:
-        subprocess.Popen([str(chrome), url])
+        profile = _chrome_profile_dir()
+        profile.mkdir(parents=True, exist_ok=True)
+        subprocess.Popen([
+            str(chrome),
+            f"--user-data-dir={profile}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            url,
+        ])
     else:
         webbrowser.open(url)
 
