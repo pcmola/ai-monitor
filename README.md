@@ -10,6 +10,7 @@ Claude·Codex 구독 한도, Tavily·ElevenLabs 크레딧과 Azure 비용을 확
 - [2. 빠른 시작](#2-빠른-시작)
   - [2.1 비용 DB 최초 생성·수집](#21-비용-db-최초-생성수집)
   - [2.2 화면 주소](#22-화면-주소)
+  - [2.3 Windows에서 VS Code 없이 실행](#23-windows에서-vs-code-없이-실행)
 - [3. 실제 화면](#3-실제-화면)
   - [3.1 모니터 허브](#31-모니터-허브)
   - [3.2 사용량 모니터](#32-사용량-모니터)
@@ -55,7 +56,7 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 python hub.py --start-all
 ```
 
-### 2.0 Windows에서 VS Code 없이 실행
+### 2.3 Windows에서 VS Code 없이 실행
 
 VS Code를 열지 않고도 프로젝트 폴더의 `run-hub.bat`을 더블클릭해 허브를 실행할 수 있습니다.
 
