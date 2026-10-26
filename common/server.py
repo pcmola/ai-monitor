@@ -63,12 +63,12 @@ def local_server(port: int, handler, name: str | None = None) -> LocalServer:
 
 
 def _chrome_profile_dir() -> Path:
-    """Return the isolated Chrome profile used by the local monitor window."""
+    """로컬 모니터 창에서 사용하는 전용 Chrome 프로필 경로를 반환합니다."""
     return Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ai-monitor" / "chrome-profile"
 
 
 def close_chrome():
-    """Close only Chrome processes launched with the monitor's isolated profile."""
+    """모니터 전용 프로필로 실행한 Chrome 프로세스만 종료합니다."""
     profile = str(_chrome_profile_dir()).replace("'", "''")
     command = (
         "$profile = '" + profile + "'; "
