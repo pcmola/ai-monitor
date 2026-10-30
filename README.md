@@ -73,7 +73,11 @@ cd F:\sandbox\ai-monitor
 .\run-hub.bat --no-browser
 ```
 
-`hub.py`가 실행되면 기존 AI Monitor 서버 프로세스를 정리하고 허브를 시작합니다. Chrome은 AI Monitor 전용 프로필로 일반 Chrome 창을 열며, 다음 실행 시 이전 전용 창만 닫습니다. 기존 개인 Chrome 창과 탭은 건드리지 않습니다. 전용 프로필은 `%LOCALAPPDATA%\ai-monitor\chrome-profile`에 저장됩니다.
+`hub.py`는 실행 시 이미 떠 있는 AI Monitor 서버를 찾아 상태만 표시하고 그대로 둡니다. 꺼진 서버를 시작하려면 `--start-all`, 모두 다시 시작하려면 `--restart-all`을 붙입니다. 허브 콘솔에서 Ctrl+C를 누르면 허브만 종료되고 서버는 계속 실행되므로, 서버까지 끄려면 먼저 허브 화면의 **모두 중지**(또는 서버별 **중지**)를 누릅니다.
+
+`run-hub.bat`은 UTF-8 한글 메시지를 위해 `chcp 65001`을 사용하며 CRLF 줄바꿈이어야 합니다. LF로 저장되면 cmd가 줄을 잘못 읽어 `'/d'은(는) 내부 또는 외부 명령…` 같은 오류가 납니다. 저장소의 `.gitattributes`가 `*.bat`을 CRLF로 체크아웃하도록 지정합니다.
+
+Chrome은 AI Monitor 전용 프로필로 일반 Chrome 창을 열며, 다음 실행 시 이전 전용 창만 닫습니다. 기존 개인 Chrome 창과 탭은 건드리지 않습니다. 전용 프로필은 `%LOCALAPPDATA%\ai-monitor\chrome-profile`에 저장됩니다.
 
 앱 실행에는 Python 표준 라이브러리만 필요합니다. `tests/requirements.txt`의 `playwright`는 브라우저 테스트와 화면 캡처용 의존성입니다.
 
@@ -280,7 +284,7 @@ python -m monitors.cost_monitor
 python -m monitors.cost_batch --days 7
 ```
 
-허브에서 실행한 모니터의 출력은 `logs/`에 저장됩니다. 허브 콘솔을 닫아도 별도로 실행된 모니터는 계속 동작할 수 있으므로, 중지할 때는 허브의 관리 버튼을 사용합니다.
+허브에서 실행한 모니터의 출력은 `logs/`에 저장됩니다. 허브 콘솔을 닫거나 Ctrl+C로 꺼도 별도로 실행된 모니터는 계속 동작하므로, 중지할 때는 허브의 관리 버튼을 사용합니다.
 
 ## 5. 비용 배치 — 매일 09:05
 
