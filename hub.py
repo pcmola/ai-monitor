@@ -4,11 +4,11 @@
     python hub.py --start-all    # 허브를 켜면서 꺼져 있는 서버를 모두 시작
     python hub.py --restart-all  # 허브를 켜면서 모든 서버를 다시 시작(중복 실행도 정리)
     python hub.py --no-browser
-    python hub.py --console      # 창을 닫지 않고 콘솔에서 계속 실행 (기본은 10초 뒤 백그라운드로 넘기고 창을 닫음)
+    python hub.py --console      # 창을 닫지 않고 콘솔에서 계속 실행 (기본은 5초 뒤 백그라운드로 넘기고 창을 닫음)
 
 - 서버는 창 없이 띄우고 출력은 logs/<key>.log 에 남긴다. 허브를 꺼도 서버는 계속 돈다.
 - 실행 여부는 프로세스 명령줄의 스크립트 이름으로 찾는다. 허브 밖에서 직접 띄운 서버도 보이고 끌 수 있다.
-- 콘솔에서 시작하면 10초 카운트다운 뒤 창 없는 허브(--background)로 넘기고 창을 닫는다. 이후 허브 로그는 logs/hub.log.
+- 콘솔에서 시작하면 5초 카운트다운 뒤 창 없는 허브(--background)로 넘기고 창을 닫는다. 이후 허브 로그는 logs/hub.log.
 - 콘솔에는 시각과 함께 시작 설정, 요청, 생성·종료한 PID, 상태 변화(허브 밖에서 끄거나 죽은 경우 포함), 오류를 남긴다.
 - 서버 주소 규칙(hosts의 IP에 따른 주소)은 common/server.py 설명 참고.
 - ai-master 허브 구조를 바탕으로 하며, 이 프로젝트의 monitors 패키지를 모듈로 실행한다.
@@ -36,7 +36,7 @@ HUB_PORT, HUB_SITE, HUB_TITLE = 8770, "ai-monitor.local", "AI 모니터 허브"
 LOG_DIR = PROJECT_ROOT / "logs"
 LOG_ROTATE_BYTES = 2 * 1024 * 1024
 HUB_LOG = LOG_DIR / "hub.log"
-HANDOFF_SECONDS = 10
+HANDOFF_SECONDS = 5
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 DETACH = NO_WINDOW | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
