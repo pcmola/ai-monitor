@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal
 
 rem 더블클릭으로 실행해도 프로젝트 폴더에서 실행되도록 이동합니다.
