@@ -29,7 +29,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from urllib.request import ProxyHandler, build_opener
 
-from common.server import close_chrome, favicon, local_server, open_chrome, site_url
+from common.server import favicon, local_server, open_chrome, site_url
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 HUB_PORT, HUB_SITE, HUB_TITLE = 8770, "ai-monitor.local", "AI 모니터 허브"
@@ -507,8 +507,6 @@ def main():
     flags = set(sys.argv[1:])
     background = "--background" in flags
     ip, port, _ = site_url(HUB_SITE, HUB_PORT)
-    if not background:
-        close_chrome()
     server = create_hub_server()
     log(f"{HUB_TITLE} 시작: {server.url} (수신 {ip}:{port}, PID {os.getpid()})")
     log(f"  파이썬 {sys.executable}")

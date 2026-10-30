@@ -80,8 +80,6 @@ cd F:\sandbox\ai-monitor
 
 `run-hub.bat`은 UTF-8 한글 메시지를 위해 `chcp 65001`을 사용하며 CRLF 줄바꿈이어야 합니다. LF로 저장되면 cmd가 줄을 잘못 읽어 `'/d'은(는) 내부 또는 외부 명령…` 같은 오류가 납니다. 저장소의 `.gitattributes`가 `*.bat`을 CRLF로 체크아웃하도록 지정합니다.
 
-Chrome은 AI Monitor 전용 프로필로 일반 Chrome 창을 열며, 다음 실행 시 이전 전용 창만 닫습니다. 기존 개인 Chrome 창과 탭은 건드리지 않습니다. 전용 프로필은 `%LOCALAPPDATA%\ai-monitor\chrome-profile`에 저장됩니다.
-
 앱 실행에는 Python 표준 라이브러리만 필요합니다. `tests/requirements.txt`의 `playwright`는 브라우저 테스트와 화면 캡처용 의존성입니다.
 
 새 저장소에는 인증 정보와 비용 DB가 없습니다. 아래 설정을 완료해야 각 서비스의 실제 수치가 표시됩니다.
