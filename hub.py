@@ -4,9 +4,11 @@
     python hub.py --start-all    # 허브를 켜면서 꺼져 있는 서버를 모두 시작
     python hub.py --restart-all  # 허브를 켜면서 모든 서버를 다시 시작(중복 실행도 정리)
     python hub.py --no-browser
+    python hub.py --console      # 창을 닫지 않고 콘솔에서 계속 실행 (기본은 10초 뒤 백그라운드로 넘기고 창을 닫음)
 
 - 서버는 창 없이 띄우고 출력은 logs/<key>.log 에 남긴다. 허브를 꺼도 서버는 계속 돈다.
 - 실행 여부는 프로세스 명령줄의 스크립트 이름으로 찾는다. 허브 밖에서 직접 띄운 서버도 보이고 끌 수 있다.
+- 콘솔에서 시작하면 10초 카운트다운 뒤 창 없는 허브(--background)로 넘기고 창을 닫는다. 이후 허브 로그는 logs/hub.log.
 - 콘솔에는 시각과 함께 시작 설정, 요청, 생성·종료한 PID, 상태 변화(허브 밖에서 끄거나 죽은 경우 포함), 오류를 남긴다.
 - 서버 주소 규칙(hosts의 IP에 따른 주소)은 common/server.py 설명 참고.
 - ai-master 허브 구조를 바탕으로 하며, 이 프로젝트의 monitors 패키지를 모듈로 실행한다.
@@ -33,6 +35,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 HUB_PORT, HUB_SITE, HUB_TITLE = 8770, "ai-monitor.local", "AI 모니터 허브"
 LOG_DIR = PROJECT_ROOT / "logs"
 LOG_ROTATE_BYTES = 2 * 1024 * 1024
+HUB_LOG = LOG_DIR / "hub.log"
+HANDOFF_SECONDS = 10
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 DETACH = NO_WINDOW | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
@@ -197,11 +201,7 @@ def create_hub_server():
 def start(s: dict):
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     out_file = LOG_DIR / f"{s['key']}.log"
-    if out_file.is_file() and out_file.stat().st_size > LOG_ROTATE_BYTES:
-        try:
-            out_file.replace(out_file.with_suffix(".old.log"))
-        except OSError:
-            pass  # 다른 프로세스가 쓰고 있으면 그대로 이어 쓴다
+    rotate(out_file)
     cmd = [sys.executable, "-m", s["module"], "--no-browser"]
     env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
     with open(out_file, "ab") as f:
@@ -461,10 +461,54 @@ refresh();setInterval(refresh,3000);
 </script></body></html>"""
 
 
+def rotate(path: Path):
+    if path.is_file() and path.stat().st_size > LOG_ROTATE_BYTES:
+        try:
+            path.replace(path.with_suffix(".old.log"))
+        except OSError:
+            pass  # 다른 프로세스가 쓰고 있으면 그대로 이어 쓴다
+
+
+def countdown(seconds: int):
+    """창을 닫기 전 남은 시간을 한 줄에서 갱신해 보여 준다."""
+    for left in range(seconds, 0, -1):
+        with _print_lock:
+            print(f"\r{datetime.now():%Y-%m-%d %H:%M:%S} {left:2d}초 뒤 창을 닫고 허브는 백그라운드에서 계속 실행합니다 "
+                  "(창 유지: --console, 허브 끄기: Ctrl+C)", end="", flush=True)
+        time.sleep(1)
+    with _print_lock:
+        print(flush=True)
+
+
+def hand_off(url: str) -> bool:
+    """창 없는 허브를 띄우고 응답할 때까지 기다린다. 포트는 호출 전에 비워 둔다."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    rotate(HUB_LOG)
+    cmd = [sys.executable, str(Path(__file__).resolve()), "--background"]
+    env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
+    with open(HUB_LOG, "ab") as f:
+        f.write(f"\n===== {datetime.now():%Y-%m-%d %H:%M:%S} 백그라운드 허브 시작: {' '.join(cmd)} =====\n".encode("utf-8"))
+        f.flush()
+        proc = subprocess.Popen(cmd, cwd=PROJECT_ROOT, stdout=f, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                env=env, creationflags=DETACH, close_fds=True)
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline and proc.poll() is None:
+        try:
+            with build_opener(ProxyHandler({})).open(url + "/api/status", timeout=3):
+                log(f"백그라운드 허브 PID {proc.pid} 실행 중: {url} (로그 {HUB_LOG})")
+                return True
+        except OSError:
+            time.sleep(0.5)
+    log(f"백그라운드 허브가 응답하지 않습니다 (PID {proc.pid}, 종료 코드 {proc.poll()}). 로그 {HUB_LOG} 확인")
+    return False
+
+
 def main():
     flags = set(sys.argv[1:])
+    background = "--background" in flags
     ip, port, _ = site_url(HUB_SITE, HUB_PORT)
-    close_chrome()
+    if not background:
+        close_chrome()
     server = create_hub_server()
     log(f"{HUB_TITLE} 시작: {server.url} (수신 {ip}:{port}, PID {os.getpid()})")
     log(f"  파이썬 {sys.executable}")
@@ -479,12 +523,27 @@ def main():
     elif "--start-all" in flags:
         log("꺼져 있는 서버를 시작합니다 (--start-all)")
         dispatch("all", "start")
-    if "--no-browser" not in flags:
+    if not background and "--no-browser" not in flags:
         open_chrome(server.url)
-    log("요청을 기다립니다. 끄려면 Ctrl+C (서버들은 계속 실행됨)")
-    try: server.serve_forever()
-    except KeyboardInterrupt: log("Ctrl+C: 허브를 끕니다")
-    finally: server.server_close()
+    if background or "--console" in flags:
+        log("요청을 기다립니다." if background else "요청을 기다립니다. 끄려면 Ctrl+C (서버들은 계속 실행됨)")
+        try: server.serve_forever()
+        except KeyboardInterrupt: log("Ctrl+C: 허브를 끕니다")
+        finally: server.server_close()
+        return
+    # 카운트다운 동안에도 요청을 받고, 끝나면 창 없는 허브에 포트를 넘긴다.
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        countdown(HANDOFF_SECONDS)
+    except KeyboardInterrupt:
+        print(flush=True)
+        log("Ctrl+C: 허브를 끕니다")
+        return
+    finally:
+        server.shutdown()
+        server.server_close()
+    if not hand_off(server.url):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__": main()
