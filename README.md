@@ -74,7 +74,7 @@ cd F:\sandbox\ai-monitor
 .\run-hub.bat --console
 ```
 
-`hub.py`는 실행 시 이미 떠 있는 AI Monitor 서버를 찾아 상태만 표시하고 그대로 둡니다. 꺼진 서버를 시작하려면 `--start-all`, 모두 다시 시작하려면 `--restart-all`을 붙입니다. 허브 콘솔은 시작 정보를 보여 준 뒤 5초 카운트다운을 하고, 끝나면 허브를 창 없는 백그라운드 프로세스(`hub.py --background`)로 넘기고 창을 닫습니다. 허브 주소와 모니터는 그대로 동작하며, 이후 허브 로그는 `logs/hub.log`에 남습니다. 창을 계속 띄워 두려면 `--console`을 붙입니다. 더블클릭으로 연 창은 닫히지만, 이미 열려 있던 터미널에서 실행했다면 그 터미널은 그대로 남습니다.
+`hub.py`는 실행 시 이미 떠 있는 AI Monitor 서버를 찾아 상태만 표시하고 그대로 둡니다. 꺼진 서버를 시작하려면 `--start-all`, 모두 다시 시작하려면 `--restart-all`을 붙입니다. 허브 콘솔은 시작 정보를 보여 준 뒤 5초 카운트다운을 하고, 끝나면 허브를 창 없는 백그라운드 프로세스(`hub.py --background`)로 넘기고 창을 닫습니다. 허브 주소와 모니터는 그대로 동작하며, 이후 허브 로그는 `logs/hub.log`에 남습니다. 창을 계속 띄워 두려면 `--console`을 붙입니다. 허브 화면은 평소 쓰는 Chrome(없으면 기본 브라우저)으로 열리며, `--no-browser`를 붙이면 열지 않습니다. 더블클릭으로 연 창은 닫히지만, 이미 열려 있던 터미널에서 실행했다면 그 터미널은 그대로 남습니다.
 
 카운트다운 중이나 `--console` 실행 중에 Ctrl+C를 누르면 허브만 종료되고 서버는 계속 실행됩니다. 백그라운드 허브를 끄려면 `.\run-hub.bat --console`로 다시 실행(기존 허브를 교체)한 뒤 Ctrl+C를 누릅니다. 서버까지 끄려면 먼저 허브 화면의 **모두 중지**(또는 서버별 **중지**)를 누릅니다.
 
@@ -279,13 +279,14 @@ ai-monitor/
 python hub.py --start-all
 python hub.py --restart-all
 python hub.py --no-browser
+python hub.py --console
 # 각각 직접 실행할 때:
 python -m monitors.usage_monitor
 python -m monitors.cost_monitor
 python -m monitors.cost_batch --days 7
 ```
 
-허브에서 실행한 모니터의 출력은 `logs/`에 저장됩니다. 허브 콘솔을 닫거나 Ctrl+C로 꺼도 별도로 실행된 모니터는 계속 동작하므로, 중지할 때는 허브의 관리 버튼을 사용합니다.
+허브에서 실행한 모니터의 출력은 `logs/<서버키>.log`, 백그라운드로 넘어간 허브의 출력은 `logs/hub.log`에 저장됩니다. 허브 창이 닫히거나 허브를 Ctrl+C로 꺼도 모니터는 계속 동작하므로, 중지할 때는 허브의 관리 버튼을 사용합니다.
 
 ## 5. 비용 배치 — 매일 09:05
 
