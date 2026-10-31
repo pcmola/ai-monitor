@@ -8,9 +8,9 @@ Claude·Codex 구독 한도, Tavily·ElevenLabs 크레딧과 Azure 비용을 확
 
 - [1. 사전 조건](#1-사전-조건)
 - [2. 빠른 시작](#2-빠른-시작)
-  - [2.1. 비용 DB 최초 생성·수집](#21-비용-db-최초-생성수집)
-  - [2.2. 화면 주소](#22-화면-주소)
-  - [2.3. Windows에서 VS Code 없이 실행](#23-windows에서-vs-code-없이-실행)
+  - [2.1. Windows에서 VS Code 없이 실행](#21-windows에서-vs-code-없이-실행)
+  - [2.2. 비용 DB 최초 생성·수집](#22-비용-db-최초-생성수집)
+  - [2.3. 화면 주소](#23-화면-주소)
 - [3. 실제 화면](#3-실제-화면)
   - [3.1. 모니터 허브](#31-모니터-허브)
   - [3.2. 사용량 모니터](#32-사용량-모니터)
@@ -56,7 +56,7 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 python hub.py --start-all
 ```
 
-### 2.3. Windows에서 VS Code 없이 실행
+### 2.1. Windows에서 VS Code 없이 실행
 
 VS Code를 열지 않고도 프로젝트 폴더의 `run-hub.bat`을 더블클릭해 허브를 실행할 수 있습니다.
 
@@ -92,15 +92,15 @@ cd F:\sandbox\ai-monitor
 | ElevenLabs 크레딧 | 루트 `.env`의 `ELEVENLABS_API_KEY`, 구독 조회에 필요한 `user_read` 권한 |
 | Azure 비용 | Azure CLI 설치·`az login`, 대상 구독의 Cost Management Reader 이상 권한 |
 
-### 2.1. 비용 DB 최초 생성·수집
+### 2.2. 비용 DB 최초 생성·수집
 
-아래 명령은 DB가 없으면 생성하고 Azure 조회 결과를 `data/cost_monitor.db`에 저장합니다. 기본 화면은 어제까지의 최근 7일을 표시하므로, 최초에는 오늘을 포함한 **8일**을 수집해 그 범위를 채웁니다.
+아래 명령은 DB가 없으면 생성하고 Azure 조회 결과를 `data/cost_monitor.db`에 저장합니다. 기본 화면은 오늘을 제외한 최근 7일을 표시하므로, 최초 수집도 **7일**이면 충분합니다.
 
 ```powershell
 az login
 # 구독이 여러 개라면 대상 구독으로 변경합니다.
 az account set --subscription "구독 이름 또는 ID"
-python -m monitors.cost_batch --days 8
+python -m monitors.cost_batch --days 7
 # 수집 성공 후 비용 화면을 새로고침합니다.
 ```
 
@@ -114,7 +114,7 @@ Test-Path .\data\cost_monitor.db
 
 기존 DB를 옮길 때는 관련 서버·배치를 중지하고 `data/cost_monitor.db` 위치에 복사합니다. 이 프로젝트가 생성한 테이블 구조의 DB를 사용해야 하며, 공유·백업 시 비용·구독 정보의 공개 범위에 주의하세요.
 
-### 2.2. 화면 주소
+### 2.3. 화면 주소
 
 | 화면 | hosts 등록 시 | hosts 미등록 시 |
 |---|---|---|
@@ -209,7 +209,7 @@ flowchart TD
     class Env config
 ```
 
-Claude는 로컬 로그인 정보를 사용하고, Codex는 로컬 세션에 기록된 한도를 읽습니다. Tavily·ElevenLabs 조회 코드는 `providers/`에 있으며 키는 Git에서 제외된 루트 `.env`에서 읽습니다.
+사용량 모니터는 Claude, Codex, Tavily, ElevenLabs 네 서비스의 한도·크레딧을 수집합니다. 그림에서는 Tavily와 ElevenLabs를 하나의 API 그룹으로 묶어 세 개의 소스로 표시했습니다. Claude는 로컬 로그인 정보를 사용하고, Codex는 로컬 세션에 기록된 한도를 읽습니다. Tavily·ElevenLabs 조회 코드는 `providers/`에 있으며 키는 Git에서 제외된 루트 `.env`에서 읽습니다.
 
 ### 4.3. 비용 화면 조회
 
