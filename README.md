@@ -39,7 +39,7 @@ Claude·Codex 구독 한도, Tavily·ElevenLabs 크레딧과 Azure 비용을 확
 | Azure API 조회·배치 수집 | 대상 구독 비용 조회 권한(Cost Management Reader 등), Azure API 연결 | 직접 조회·DB 수집 실패 |
 | 로컬 DB 조회 | `data/cost_monitor.db`에 선택한 구독·분류·기간의 수집 데이터 | 파일이 없거나 수집 범위가 부족하면 조회할 비용 없음 |
 | 예약 배치 | 작업 스케줄러에 별도 등록, 실행 사용자 Azure 로그인 유지, 실행 시 시스템 전원 켜짐 | 정해진 시각에 수집되지 않음 |
-| 허브 자동 실행 | 작업 스케줄러에 로그온 트리거 작업(`AI-Monitor-Hub`) 별도 등록 | 재부팅·로그오프 뒤 허브 주소 연결 거부, `run-hub.bat` 직접 실행 필요 |
+| 허브 자동 점검 | 작업 스케줄러에 매일 09:05·로그온 트리거 작업(`AI-Monitor-Hub`) 별도 등록, 실행 시 시스템 전원 켜짐 | 허브가 꺼지면 주소 연결 거부, `run-hub.bat` 직접 실행 필요 |
 
 **DB 서버 설치는 필요 없습니다.** Python에 포함된 SQLite를 사용합니다. DB 파일·테이블은 최초 배치 실행 시 자동 생성되지만, 비용 데이터는 Azure 조회에 성공해야 채워집니다. Git에는 DB와 실제 인증 정보가 포함되지 않습니다.
 
@@ -81,15 +81,16 @@ cd F:\sandbox\ai-monitor
 
 `run-hub.bat`은 UTF-8 한글 메시지를 위해 `chcp 65001`을 사용하며 CRLF 줄바꿈이어야 합니다. LF로 저장되면 cmd가 줄을 잘못 읽어 `'/d'은(는) 내부 또는 외부 명령…` 같은 오류가 납니다. 저장소의 `.gitattributes`가 `*.bat`을 CRLF로 체크아웃하도록 지정합니다.
 
-**로그온 시 자동 실행.** 재부팅·로그오프 뒤에도 허브가 떠 있도록 현재 개발 환경에는 Windows 작업 **`AI-Monitor-Hub`**가 등록되어 있습니다. 로그온 30초 뒤 `scripts/start_hub.ps1`이 창 없이 `hub.py --background --start-all`을 실행해 허브와 꺼져 있는 모니터를 모두 띄웁니다. 브라우저는 열지 않으며 출력은 `logs/hub.log`에 이어 붙습니다. 이 작업이 없으면 재부팅 뒤 `ai-monitor.local`이 `ERR_CONNECTION_REFUSED`로 열리지 않으니 `run-hub.bat`을 직접 실행해야 합니다. 작업 스케줄러는 저장소에 포함되지 않으므로 다른 환경에서는 아래처럼 등록하고 경로를 실제 저장소 위치로 바꿉니다.
+**매일 09:05 허브 점검.** PC를 계속 켜 두어도 허브가 꺼져 있는 일이 없도록 현재 개발 환경에는 Windows 작업 **`AI-Monitor-Hub`**가 등록되어 있습니다. 매일 **09:05**(그 시각에 PC가 꺼져 있었다면 켜진 직후)와 로그온 30초 뒤에 `scripts/start_hub.ps1`을 창 없이 실행합니다. 스크립트는 허브(`ai-monitor.local`, 없으면 `127.0.0.1:8770`)가 응답하면 기존 허브를 그대로 두고 꺼져 있는 모니터만 시작 요청하고, 응답하지 않으면 `hub.py --background --start-all`로 허브와 모니터를 모두 띄웁니다. 브라우저는 열지 않습니다. 점검 결과는 `logs/hub-check.log`, 허브 출력은 `logs/hub.log`에 이어 붙습니다. 이 작업이 없으면 허브가 꺼진 뒤 `ai-monitor.local`이 `ERR_CONNECTION_REFUSED`로 열리지 않으니 `run-hub.bat`을 직접 실행해야 합니다. 작업 스케줄러는 저장소에 포함되지 않으므로 다른 환경에서는 아래처럼 등록하고 경로를 실제 저장소 위치로 바꿉니다.
 
 ```powershell
 $action = New-ScheduledTaskAction -Execute "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" `
   -Argument '-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "F:\sandbox\ai-monitor\scripts\start_hub.ps1"' `
   -WorkingDirectory 'F:\sandbox\ai-monitor'
-$trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"; $trigger.Delay = 'PT30S'
-$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
-Register-ScheduledTask -TaskName AI-Monitor-Hub -Action $action -Trigger $trigger -Settings $settings
+$daily = New-ScheduledTaskTrigger -Daily -At '09:05'
+$logon = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"; $logon.Delay = 'PT30S'
+$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -StartWhenAvailable
+Register-ScheduledTask -TaskName AI-Monitor-Hub -Action $action -Trigger $daily, $logon -Settings $settings
 # 지금 바로 실행 / 상태 확인 (허브가 실행 중이면 LastTaskResult는 267009)
 Start-ScheduledTask -TaskName AI-Monitor-Hub
 Get-ScheduledTaskInfo -TaskName AI-Monitor-Hub
@@ -281,7 +282,7 @@ ai-monitor/
 ├── monitors/                 # 사용량·비용 서버와 비용 수집 배치
 ├── common/                   # 공통 웹서버·파비콘·프로젝트 경로
 ├── providers/                # Tavily·ElevenLabs 사용량 조회
-├── scripts/                  # 배치 실행·로그온 허브 실행·Git 업로드·화면 캡처
+├── scripts/                  # 배치 실행·허브 점검·Git 업로드·화면 캡처
 ├── tests/                    # 단위 테스트·브라우저 검증
 ├── docs/images/              # README용 실제 화면 캡처
 ├── data/                     # 로컬 비용 DB (Git 제외)
