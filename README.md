@@ -162,7 +162,7 @@ Test-Path .\data\cost_monitor.db
 
 ### 3.2. 사용량 모니터
 
-Claude, ChatGPT/Codex, Tavily, ElevenLabs 네 카드를 한 화면에 표시합니다. 카드 왼쪽 위 로고를 누르면 해당 서비스 홈페이지(claude.ai, chatgpt.com, tavily.com, elevenlabs.io)가 새 탭으로 열립니다. 로컬 기록 기준 토큰 사용량 표는 표시하지 않습니다.
+Claude, ChatGPT/Codex, Tavily, ElevenLabs 네 카드를 한 화면에 표시합니다. 카드 왼쪽 위 로고나 서비스 이름을 누르면 해당 서비스 홈페이지(claude.ai, chatgpt.com, tavily.com, elevenlabs.io)가 새 탭으로 열립니다. 로컬 기록 기준 토큰 사용량 표는 표시하지 않습니다.
 
 ![사용량 모니터: 네 서비스의 남은 한도와 크레딧](docs/images/usage.png)
 
